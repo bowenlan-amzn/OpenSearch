@@ -1,7 +1,7 @@
 name: 🎆 Feature request
 description: Suggest an idea for this project
 title: '[Feature Request] <title>'
-labels: ['enhancement, untriaged']
+labels: ['enhancement']
 body:
   - type: textarea
     attributes:
@@ -18,8 +18,8 @@ body:
       required: true
   - type: dropdown
     attributes:
-      label: Choose the related component
-      description: Choose one specific OpenSearch component your problem belongs to.
+      label: Related component
+      description: Choose one specific OpenSearch component your feature request belongs to.
       multiple: false
       options:
         - Search:Resiliency
@@ -43,7 +43,6 @@ body:
         - Extensions
         - Build Libraries & Interfaces
         - Plugins
-        - Others
     validations:
       required: true
   - type: textarea
