@@ -13,6 +13,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.IntsRef;
 
 import java.io.IOException;
 import java.util.function.BiConsumer;
@@ -76,6 +77,10 @@ public final class PointTreeTraversal {
         }
 
         public abstract void visit(int docID);
+
+        public abstract void visit(DocIdSetIterator iterator) throws IOException;
+
+        public abstract void visit(IntsRef ref) throws IOException;
 
         public abstract void visit(int docID, byte[] packedValue);
 
@@ -185,7 +190,18 @@ public final class PointTreeTraversal {
 
         @Override
         public void visit(int docID) {
-            countDocs.accept(activeIndex, 1);
+            // countDocs.accept(activeIndex, 1);
+            throw new IllegalStateException("Should not be called");
+        }
+
+        @Override
+        public void visit(DocIdSetIterator iterator) throws IOException {
+            throw new IllegalStateException("Should not be called");
+        }
+
+        @Override
+        public void visit(IntsRef ref) throws IOException {
+            throw new IllegalStateException("Should not be called");
         }
 
         @Override
@@ -233,6 +249,20 @@ public final class PointTreeTraversal {
         @Override
         public void visit(int docID) {
             collectDocs.accept(activeIndex, docID);
+        }
+
+        @Override
+        public void visit(DocIdSetIterator iterator) throws IOException {
+            for (int doc = iterator.nextDoc(); doc != NO_MORE_DOCS; doc = iterator.nextDoc()) {
+                collectDocs.accept(activeIndex, doc);
+            }
+        }
+
+        @Override
+        public void visit(IntsRef ref) throws IOException {
+            for (int i = ref.offset; i < ref.offset + ref.length; i++) {
+                collectDocs.accept(activeIndex, ref.ints[i]);
+            }
         }
 
         @Override
