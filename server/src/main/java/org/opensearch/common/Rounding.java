@@ -517,7 +517,9 @@ public abstract class Rounding implements Writeable {
             return ID;
         }
 
-        public ZoneId getTimeZone() { return timeZone; }
+        public ZoneId getTimeZone() {
+            return timeZone;
+        }
 
         private LocalDateTime truncateLocalDateTime(LocalDateTime localDateTime) {
             switch (unit) {
