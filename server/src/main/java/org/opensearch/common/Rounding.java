@@ -489,7 +489,7 @@ public abstract class Rounding implements Writeable {
      *
      * @opensearch.internal
      */
-    static class TimeUnitRounding extends Rounding {
+    public static class TimeUnitRounding extends Rounding {
         static final byte ID = 1;
 
         private final DateTimeUnit unit;
@@ -516,6 +516,8 @@ public abstract class Rounding implements Writeable {
         public byte id() {
             return ID;
         }
+
+        public ZoneId getTimeZone() { return timeZone; }
 
         private LocalDateTime truncateLocalDateTime(LocalDateTime localDateTime) {
             switch (unit) {
