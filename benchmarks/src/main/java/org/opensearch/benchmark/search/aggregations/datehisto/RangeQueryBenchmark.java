@@ -15,6 +15,7 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
+import org.apache.lucene.search.QueryCachingPolicy;
 import org.apache.lucene.search.TotalHitCountCollectorManager;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.index.IndexWriter;
@@ -48,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 @Warmup(iterations = 10)
 @Measurement(iterations = 5)
 @BenchmarkMode(Mode.AverageTime)
-@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Benchmark)
 public class RangeQueryBenchmark {
 
@@ -100,6 +101,15 @@ public class RangeQueryBenchmark {
 
     private void setUpSearch() {
         searcher = new IndexSearcher(reader);
+        searcher.setQueryCachingPolicy(new QueryCachingPolicy() {
+            @Override
+            public void onUse(Query query) { }
+
+            @Override
+            public boolean shouldCache(Query query) {
+                return false;
+            }
+        });
         prq = LongPoint.newRangeQuery("number", 0, docCount);
         dvq = SortedNumericDocValuesField.newSlowRangeQuery("number", 0, docCount);
     }
