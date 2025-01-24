@@ -8,15 +8,12 @@
 
 package org.opensearch.benchmark.search.aggregations.datehisto;
 
-import org.apache.lucene.document.Field;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.document.SortedNumericDocValuesField;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.search.IndexSearcher;
-import org.apache.lucene.search.PointRangeQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TotalHitCountCollectorManager;
 import org.apache.lucene.store.FSDirectory;
@@ -45,9 +42,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Index random docs
- * <p>
- * Search and collect into a map
+ * Index random docs, compare the performance of PointRangeQuery and SortedNumericDocValuesField.newSlowRangeQuery
  */
 @Fork(1)
 @Warmup(iterations = 10)
@@ -57,6 +52,7 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Benchmark)
 public class RangeQueryBenchmark {
 
+    // 1M to 10M
     @Param({ "1000000", "2000000", "3000000", "4000000", "5000000", "6000000", "7000000", "8000000", "9000000", "10000000"})
     long docCount;
 
@@ -86,9 +82,8 @@ public class RangeQueryBenchmark {
 
             for (int i = 0; i < docCount; i++) {
                 List<IndexableField> doc = new ArrayList<>();
-                doc.add(new StringField("id", Integer.toString(i), Field.Store.YES));
-                doc.add(new LongPoint("number", i));
-                doc.add(new SortedNumericDocValuesField("number", i));
+                doc.add(new LongPoint("number", (long)(Math.random() * docCount)));
+                doc.add(new SortedNumericDocValuesField("number", (long)(Math.random() * docCount)));
                 writer.addDocument(doc);
             }
         }
