@@ -110,8 +110,16 @@ public class RangeQueryBenchmark {
                 return false;
             }
         });
-        prq = LongPoint.newRangeQuery("number", 0, docCount);
-        dvq = SortedNumericDocValuesField.newSlowRangeQuery("number", 0, docCount);
+
+        long[] range = new long[]{0, docCount};
+        long random = (long)(Math.random() * docCount);
+        if (random < docCount / 2) {
+            range[0] = random;
+        } else {
+            range[1] = random;
+        }
+        prq = LongPoint.newRangeQuery("number", range[0], range[1]);
+        dvq = SortedNumericDocValuesField.newSlowRangeQuery("number", range[0], range[1]);
     }
 
     @TearDown
