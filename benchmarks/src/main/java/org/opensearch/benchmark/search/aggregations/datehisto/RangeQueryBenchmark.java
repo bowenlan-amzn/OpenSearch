@@ -13,10 +13,16 @@ import org.apache.lucene.document.SortedNumericDocValuesField;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexableField;
+import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.Collector;
+import org.apache.lucene.search.CollectorManager;
+import org.apache.lucene.search.DocIdStream;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.LeafCollector;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.QueryCachingPolicy;
-import org.apache.lucene.search.TotalHitCountCollectorManager;
+import org.apache.lucene.search.Scorable;
+import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -39,6 +45,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -134,13 +141,62 @@ public class RangeQueryBenchmark {
 
     @Benchmark
     public void searchAndCollect(Blackhole bh) throws IOException {
-        int count = searcher.search(prq, new TotalHitCountCollectorManager());
+        int count = searcher.search(prq, new TestCollectorManager());
         bh.consume(count);
     }
 
     @Benchmark
     public void iterateDVAndCollect(Blackhole bh) throws IOException {
-        int count = searcher.search(dvq, new TotalHitCountCollectorManager());
+        int count = searcher.search(dvq, new TestCollectorManager());
         bh.consume(count);
+    }
+
+    public class TestCollectorManager
+        implements CollectorManager<TotalHitCountCollector, Integer> {
+        @Override
+        public TotalHitCountCollector newCollector() throws IOException {
+            return new TotalHitCountCollector();
+        }
+
+        @Override
+        public Integer reduce(Collection<TotalHitCountCollector> collectors) throws IOException {
+            int totalHits = 0;
+            for (TotalHitCountCollector collector : collectors) {
+                totalHits += collector.getTotalHits();
+            }
+            return totalHits;
+        }
+    }
+
+    class TotalHitCountCollector implements Collector {
+        private int totalHits;
+
+        public int getTotalHits() {
+            return totalHits;
+        }
+
+        @Override
+        public ScoreMode scoreMode() {
+            return ScoreMode.COMPLETE_NO_SCORES;
+        }
+
+        @Override
+        public LeafCollector getLeafCollector(LeafReaderContext context) throws IOException {
+            return new LeafCollector() {
+
+                @Override
+                public void setScorer(Scorable scorer) throws IOException {}
+
+                @Override
+                public void collect(int doc) throws IOException {
+                    totalHits++;
+                }
+
+                @Override
+                public void collect(DocIdStream stream) throws IOException {
+                    totalHits += stream.count();
+                }
+            };
+        }
     }
 }
