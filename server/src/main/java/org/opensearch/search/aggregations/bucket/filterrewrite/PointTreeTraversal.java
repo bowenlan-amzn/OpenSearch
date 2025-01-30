@@ -248,10 +248,9 @@ final class PointTreeTraversal {
         private void grow(int count) {
             if (docIdSetBuilders[activeIndex] == null) {
                 docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-                currentAdder = docIdSetBuilders[activeIndex].grow(count);
-            } else {
-                currentAdder = docIdSetBuilders[activeIndex].grow(count);
             }
+            logger.debug("grow docIdSetBuilder[{}] with count 200_000", activeIndex);
+            currentAdder = docIdSetBuilders[activeIndex].grow(200_000);
         }
 
         private void countNode(int count) {

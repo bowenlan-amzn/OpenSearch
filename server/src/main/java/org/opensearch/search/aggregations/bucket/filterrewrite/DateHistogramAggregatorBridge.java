@@ -143,7 +143,7 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
 
         Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
             try {
-                return new DocIdSetBuilder(1000, values, fieldType.name());
+                return new DocIdSetBuilder(2_000_000, values, fieldType.name());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
