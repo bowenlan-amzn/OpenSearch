@@ -122,6 +122,12 @@ final class PointTreeTraversal {
 
     private static PointValues.IntersectVisitor getIntersectVisitor(RangeCollectorForPointTree collector) {
         return new PointValues.IntersectVisitor() {
+
+            @Override
+            public void grow(int count) {
+                collector.grow(count);
+            }
+
             @Override
             public void visit(int docID) {
                 // this branch should be unreachable
@@ -222,21 +228,30 @@ final class PointTreeTraversal {
         }
 
         private void collectDocId(int docId) {
-            if (docIdSetBuilders[activeIndex] == null) {
-                // TODO hard code for now, should be controlled by intersector grow
-                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-                currentAdder = docIdSetBuilders[activeIndex].grow(1000);
-            }
+            // if (docIdSetBuilders[activeIndex] == null) {
+            //     // TODO hard code for now, should be controlled by intersector grow
+            //     docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+            //     currentAdder = docIdSetBuilders[activeIndex].grow(1000);
+            // }
             currentAdder.add(docId);
         }
 
         private void collectDocIdSet(DocIdSetIterator iter) throws IOException {
-            if (docIdSetBuilders[activeIndex] == null) {
-                // TODO hard code for now, should be controlled by intersector grow
-                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-                currentAdder = docIdSetBuilders[activeIndex].grow(1000);
-            }
+            // if (docIdSetBuilders[activeIndex] == null) {
+            //     // TODO hard code for now, should be controlled by intersector grow
+            //     docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+            //     currentAdder = docIdSetBuilders[activeIndex].grow(1000);
+            // }
             currentAdder.add(iter);
+        }
+
+        private void grow(int count) {
+            if (docIdSetBuilders[activeIndex] == null) {
+                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+                currentAdder = docIdSetBuilders[activeIndex].grow(count);
+            } else {
+                currentAdder = docIdSetBuilders[activeIndex].grow(count);
+            }
         }
 
         private void countNode(int count) {
