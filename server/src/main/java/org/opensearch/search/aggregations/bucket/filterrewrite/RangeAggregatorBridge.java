@@ -85,7 +85,7 @@ public abstract class RangeAggregatorBridge extends AggregatorBridge {
             incrementDocCount.accept(bucketOrd, (long) docCount);
         };
 
-        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size);
+        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, null);
     }
 
     /**

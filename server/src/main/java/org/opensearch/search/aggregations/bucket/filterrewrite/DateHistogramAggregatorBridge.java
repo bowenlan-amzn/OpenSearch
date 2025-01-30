@@ -11,6 +11,7 @@ package org.opensearch.search.aggregations.bucket.filterrewrite;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PointValues;
+import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.Rounding;
 import org.opensearch.index.mapper.DateFieldMapper;
 import org.opensearch.index.mapper.MappedFieldType;
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.util.OptionalLong;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.opensearch.search.aggregations.bucket.filterrewrite.PointTreeTraversal.multiRangesTraverse;
 
@@ -139,7 +141,15 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
             incrementDocCount.accept(bucketOrd, (long) docCount);
         };
 
-        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size);
+        Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
+            try {
+                return new DocIdSetBuilder(1000, values, fieldType.name());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, disBuilderSupplier);
     }
 
     private static long getBucketOrd(long bucketOrd) {

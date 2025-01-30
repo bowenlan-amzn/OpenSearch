@@ -13,18 +13,19 @@ import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.CheckedRunnable;
 
 import java.io.IOException;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 
 /**
  * Utility class for traversing a {@link PointValues.PointTree} and collecting document counts for the ranges.
  *
- * <p>The main entry point is the {@link #multiRangesTraverse(PointValues.PointTree, Ranges,
- * BiConsumer, int)} method
+ * <p>The main entry point is the {@link #multiRangesTraverse} method
  *
  * <p>The class uses a {@link RangeCollectorForPointTree} to keep track of the active ranges and
  * determine which parts of the tree to visit. The {@link
@@ -49,7 +50,8 @@ final class PointTreeTraversal {
         final PointValues.PointTree tree,
         final Ranges ranges,
         final BiConsumer<Integer, Integer> incrementDocCount,
-        final int maxNumNonZeroRanges
+        final int maxNumNonZeroRanges,
+        Supplier<DocIdSetBuilder> disBuilderSupplier
     ) throws IOException {
         FilterRewriteOptimizationContext.DebugInfo debugInfo = new FilterRewriteOptimizationContext.DebugInfo();
         int activeIndex = ranges.firstRangeIndex(tree.getMinPackedValue(), tree.getMaxPackedValue());
@@ -57,7 +59,14 @@ final class PointTreeTraversal {
             logger.debug("No ranges match the query, skip the fast filter optimization");
             return debugInfo;
         }
-        RangeCollectorForPointTree collector = new RangeCollectorForPointTree(incrementDocCount, maxNumNonZeroRanges, ranges, activeIndex);
+        RangeCollectorForPointTree collector = new RangeCollectorForPointTree(
+            incrementDocCount,
+            maxNumNonZeroRanges,
+            ranges,
+            activeIndex,
+            disBuilderSupplier
+        );
+
         PointValues.IntersectVisitor visitor = getIntersectVisitor(collector);
         try {
             intersectWithRanges(visitor, tree, collector, debugInfo);
@@ -65,6 +74,19 @@ final class PointTreeTraversal {
             logger.debug("Early terminate since no more range to collect");
         }
         collector.finalizePreviousRange();
+
+        DocIdSetBuilder[] builders = collector.docIdSetBuilders;
+        logger.debug("length of docIdSetBuilders: {}", builders.length);
+        for (int i = 0; i < builders.length; i++) {
+            if (builders[i] != null) {
+                int count = 0;
+                DocIdSetIterator iterator = builders[i].build().iterator();
+                while (iterator.nextDoc() != NO_MORE_DOCS) {
+                    count++;
+                }
+                logger.debug(" docIdSetBuilder[{}] disi has documents: {}", i, count);
+            }
+        }
 
         return debugInfo;
     }
@@ -80,6 +102,7 @@ final class PointTreeTraversal {
         switch (r) {
             case CELL_INSIDE_QUERY:
                 collector.countNode((int) pointTree.size());
+                pointTree.visitDocIDs(visitor);
                 debug.visitInner();
                 break;
             case CELL_CROSSES_QUERY:
@@ -102,14 +125,22 @@ final class PointTreeTraversal {
             @Override
             public void visit(int docID) {
                 // this branch should be unreachable
-                throw new UnsupportedOperationException(
-                    "This IntersectVisitor does not perform any actions on a " + "docID=" + docID + " node being visited"
-                );
+                // throw new UnsupportedOperationException(
+                // "This IntersectVisitor does not perform any actions on a " + "docID=" + docID + " node being visited"
+                // );
+                collector.collectDocId(docID);
+            }
+
+            @Override
+            public void visit(DocIdSetIterator iterator) throws IOException {
+                collector.collectDocIdSet(iterator);
             }
 
             @Override
             public void visit(int docID, byte[] packedValue) throws IOException {
                 visitPoints(packedValue, collector::count);
+
+                collector.collectDocId(docID);
             }
 
             @Override
@@ -119,6 +150,8 @@ final class PointTreeTraversal {
                         collector.count();
                     }
                 });
+
+                collector.collectDocIdSet(iterator);
             }
 
             private void visitPoints(byte[] packedValue, CheckedRunnable<IOException> collect) throws IOException {
@@ -162,6 +195,9 @@ final class PointTreeTraversal {
 
         private final Ranges ranges;
         private int activeIndex;
+        private final DocIdSetBuilder[] docIdSetBuilders;
+        private final Supplier<DocIdSetBuilder> disBuilderSupplier;
+        private DocIdSetBuilder.BulkAdder currentAdder;
 
         private int visitedRange = 0;
         private final int maxNumNonZeroRange;
@@ -170,16 +206,37 @@ final class PointTreeTraversal {
             BiConsumer<Integer, Integer> incrementRangeDocCount,
             int maxNumNonZeroRange,
             Ranges ranges,
-            int activeIndex
+            int activeIndex,
+            Supplier<DocIdSetBuilder> disBuilderSupplier
         ) {
             this.incrementRangeDocCount = incrementRangeDocCount;
             this.maxNumNonZeroRange = maxNumNonZeroRange;
             this.ranges = ranges;
             this.activeIndex = activeIndex;
+            this.docIdSetBuilders = new DocIdSetBuilder[ranges.size];
+            this.disBuilderSupplier = disBuilderSupplier;
         }
 
         private void count() {
             counter++;
+        }
+
+        private void collectDocId(int docId) {
+            if (docIdSetBuilders[activeIndex] == null) {
+                // TODO hard code for now, should be controlled by intersector grow
+                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+                currentAdder = docIdSetBuilders[activeIndex].grow(1000);
+            }
+            currentAdder.add(docId);
+        }
+
+        private void collectDocIdSet(DocIdSetIterator iter) throws IOException {
+            if (docIdSetBuilders[activeIndex] == null) {
+                // TODO hard code for now, should be controlled by intersector grow
+                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+                currentAdder = docIdSetBuilders[activeIndex].grow(1000);
+            }
+            currentAdder.add(iter);
         }
 
         private void countNode(int count) {
