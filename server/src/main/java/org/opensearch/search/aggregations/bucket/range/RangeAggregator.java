@@ -32,8 +32,13 @@
 package org.opensearch.search.aggregations.bucket.range;
 
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.search.BulkScorer;
 import org.apache.lucene.search.CollectionTerminatedException;
+import org.apache.lucene.search.LeafCollector;
+import org.apache.lucene.search.Scorable;
 import org.apache.lucene.search.ScoreMode;
+import org.apache.lucene.search.Weight;
+import org.apache.lucene.util.Bits;
 import org.opensearch.core.ParseField;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
@@ -71,6 +76,7 @@ import java.util.function.Function;
 
 import static org.opensearch.core.xcontent.ConstructingObjectParser.optionalConstructorArg;
 import static org.opensearch.search.aggregations.bucket.filterrewrite.DateHistogramAggregatorBridge.segmentMatchAll;
+import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 
 /**
  * Aggregate all docs that match given ranges.
@@ -311,7 +317,33 @@ public class RangeAggregator extends BucketsAggregator {
 
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
-        if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false)) {
+        if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryGetRanges(ctx, false, context)) {
+            List<Weight> weights = filterRewriteOptimizationContext.getWeights();
+            class SubLeafCollector implements LeafCollector {
+                LeafBucketCollector subCollector;
+                int filterOrd;
+
+                @Override
+                public void setScorer(Scorable scorer) throws IOException {}
+
+                @Override
+                public void collect(int docId) throws IOException {
+                    collectBucket(sub, docId, filterOrd);
+                }
+            }
+            Bits live = ctx.reader().getLiveDocs();
+            SubLeafCollector subLeafCollector = new SubLeafCollector();
+            for (int i = 0; i < weights.size(); i++) {
+                Weight weight = weights.get(i);
+                BulkScorer scorer = weight.bulkScorer(ctx);
+                if (scorer == null) {
+                    continue;
+                }
+                subLeafCollector.subCollector = collectableSubAggregators.getLeafCollector(ctx);
+                subLeafCollector.filterOrd = i;
+                scorer.score(subLeafCollector, live, 0, NO_MORE_DOCS);
+            }
+
             throw new CollectionTerminatedException();
         }
 

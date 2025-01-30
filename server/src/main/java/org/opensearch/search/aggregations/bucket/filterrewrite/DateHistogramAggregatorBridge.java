@@ -8,11 +8,14 @@
 
 package org.opensearch.search.aggregations.bucket.filterrewrite;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Weight;
+import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.Rounding;
 import org.opensearch.index.mapper.DateFieldMapper;
 import org.opensearch.index.mapper.MappedFieldType;
@@ -24,6 +27,7 @@ import java.io.IOException;
 import java.util.OptionalLong;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.opensearch.search.aggregations.bucket.filterrewrite.PointTreeTraversal.multiRangesTraverse;
 
@@ -31,6 +35,8 @@ import static org.opensearch.search.aggregations.bucket.filterrewrite.PointTreeT
  * For date histogram aggregation
  */
 public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
+
+    private static final Logger logger = LogManager.getLogger(Helper.loggerName);
 
     int maxRewriteFilters;
 
@@ -129,7 +135,8 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
     final FilterRewriteOptimizationContext.DebugInfo tryOptimize(
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
-        Ranges ranges
+        Ranges ranges,
+        int maxDoc
     ) throws IOException {
         int size = getSize();
 
@@ -141,7 +148,22 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
             incrementDocCount.accept(bucketOrd, (long) docCount);
         };
 
-        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size);
+        Function<Integer, Long> getBucketOrd = (activeIndex) -> {
+            long rangeStart = LongPoint.decodeDimension(ranges.lowers[activeIndex], 0);
+            rangeStart = fieldType.convertNanosToMillis(rangeStart);
+            return getBucketOrd(bucketOrdProducer().apply(rangeStart));
+        };
+
+        Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
+            try {
+                logger.trace("create DocIdSetBuilder of max doc {}", maxDoc);
+                return new DocIdSetBuilder(maxDoc, values, fieldType.name());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        };
+
+        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, disBuilderSupplier, getBucketOrd);
     }
 
     private static long getBucketOrd(long bucketOrd) {

@@ -79,6 +79,7 @@ public abstract class AggregatorBridge {
     abstract FilterRewriteOptimizationContext.DebugInfo tryOptimize(
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
-        Ranges ranges
+        Ranges ranges,
+        int maxDoc
     ) throws IOException;
 }
