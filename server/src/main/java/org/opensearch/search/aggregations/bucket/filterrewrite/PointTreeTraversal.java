@@ -77,6 +77,7 @@ final class PointTreeTraversal {
 
         DocIdSetBuilder[] builders = collector.docIdSetBuilders;
         logger.debug("length of docIdSetBuilders: {}", builders.length);
+        int totalCount = 0;
         for (int i = 0; i < builders.length; i++) {
             if (builders[i] != null) {
                 int count = 0;
@@ -84,9 +85,11 @@ final class PointTreeTraversal {
                 while (iterator.nextDoc() != NO_MORE_DOCS) {
                     count++;
                 }
-                logger.debug(" docIdSetBuilder[{}] disi has documents: {}", i, count);
+                logger.trace(" docIdSetBuilder[{}] disi has documents: {}", i, count);
+                totalCount += count;
             }
         }
+        logger.debug("total count of documents from docIdSetBuilder: {}", totalCount);
 
         return debugInfo;
     }
@@ -233,7 +236,7 @@ final class PointTreeTraversal {
             // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
             // currentAdder = docIdSetBuilders[activeIndex].grow(1000);
             // }
-            logger.debug("collect docId {}", docId);
+            logger.trace("collect docId {}", docId);
             currentAdder.add(docId);
         }
 
@@ -243,7 +246,7 @@ final class PointTreeTraversal {
             // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
             // currentAdder = docIdSetBuilders[activeIndex].grow(1000);
             // }
-            logger.debug("collect disi {}", iter);
+            logger.trace("collect disi {}", iter);
             currentAdder.add(iter);
         }
 
@@ -251,7 +254,7 @@ final class PointTreeTraversal {
             if (docIdSetBuilders[activeIndex] == null) {
                 docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
             }
-            logger.debug("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
+            logger.trace("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
             currentAdder = docIdSetBuilders[activeIndex].grow(count);
         }
 
