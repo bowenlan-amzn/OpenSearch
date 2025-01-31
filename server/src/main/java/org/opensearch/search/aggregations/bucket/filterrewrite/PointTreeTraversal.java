@@ -17,7 +17,10 @@ import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.CheckedRunnable;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
@@ -51,7 +54,8 @@ final class PointTreeTraversal {
         final Ranges ranges,
         final BiConsumer<Integer, Integer> incrementDocCount,
         final int maxNumNonZeroRanges,
-        Supplier<DocIdSetBuilder> disBuilderSupplier
+        Supplier<DocIdSetBuilder> disBuilderSupplier,
+        Function<Integer, Long> getBucketOrd
     ) throws IOException {
         FilterRewriteOptimizationContext.DebugInfo debugInfo = new FilterRewriteOptimizationContext.DebugInfo();
         int activeIndex = ranges.firstRangeIndex(tree.getMinPackedValue(), tree.getMaxPackedValue());
@@ -64,8 +68,11 @@ final class PointTreeTraversal {
             maxNumNonZeroRanges,
             ranges,
             activeIndex,
-            disBuilderSupplier
+            disBuilderSupplier,
+            getBucketOrd
         );
+        // tree collector should have a function to help with recording bucket ordinal to disi
+        // At the end of a range, it should be able to calculate the bucket ordinal, and record the disi
 
         PointValues.IntersectVisitor visitor = getIntersectVisitor(collector);
         try {
@@ -90,6 +97,9 @@ final class PointTreeTraversal {
             }
         }
         logger.debug("total count of documents from docIdSetBuilder: {}", totalCount);
+
+        Map<Long, DocIdSetBuilder> map = collector.bucketOrdinalToDocIdSetBuilder;
+        logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", map.keySet());
 
         return debugInfo;
     }
@@ -207,6 +217,8 @@ final class PointTreeTraversal {
         private final DocIdSetBuilder[] docIdSetBuilders;
         private final Supplier<DocIdSetBuilder> disBuilderSupplier;
         private DocIdSetBuilder.BulkAdder currentAdder;
+        private Function<Integer, Long> getBucketOrd;
+        private Map<Long, DocIdSetBuilder> bucketOrdinalToDocIdSetBuilder = new HashMap<>();
 
         private int visitedRange = 0;
         private final int maxNumNonZeroRange;
@@ -216,7 +228,8 @@ final class PointTreeTraversal {
             int maxNumNonZeroRange,
             Ranges ranges,
             int activeIndex,
-            Supplier<DocIdSetBuilder> disBuilderSupplier
+            Supplier<DocIdSetBuilder> disBuilderSupplier,
+            Function<Integer, Long> getBucketOrd
         ) {
             this.incrementRangeDocCount = incrementRangeDocCount;
             this.maxNumNonZeroRange = maxNumNonZeroRange;
@@ -224,6 +237,7 @@ final class PointTreeTraversal {
             this.activeIndex = activeIndex;
             this.docIdSetBuilders = new DocIdSetBuilder[ranges.size];
             this.disBuilderSupplier = disBuilderSupplier;
+            this.getBucketOrd = getBucketOrd;
         }
 
         private void count() {
@@ -266,6 +280,12 @@ final class PointTreeTraversal {
             if (counter > 0) {
                 incrementRangeDocCount.accept(activeIndex, counter);
                 counter = 0;
+            }
+
+            long bucketOrd = getBucketOrd.apply(activeIndex);
+            if (docIdSetBuilders[activeIndex] != null) {
+                logger.trace("finalize docIdSetBuilder[{}] with bucket ordinal {}", activeIndex, bucketOrd);
+                bucketOrdinalToDocIdSetBuilder.put(bucketOrd, docIdSetBuilders[activeIndex]);
             }
         }
 

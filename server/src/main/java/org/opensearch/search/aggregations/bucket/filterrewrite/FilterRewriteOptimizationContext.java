@@ -129,6 +129,12 @@ public final class FilterRewriteOptimizationContext {
         logger.debug("Fast filter optimization applied to shard {} segment {}", shardId, leafCtx.ord);
         logger.debug("Crossed leaf nodes: {}, inner nodes: {}", leafNodeVisited, innerNodeVisited);
 
+        // TODO refactor the tryOptimize to return a Result object which not only contains DebugInfo
+        // but also the DocIdSetIterator for sub aggregation
+        // At least 2 ways to do Iterating
+        // 1. List of Iterators per ranges
+        // 2. Composite iterator
+
         return true;
     }
 
@@ -141,6 +147,7 @@ public final class FilterRewriteOptimizationContext {
                 return null;
             }
         }
+        logger.debug("number of ranges: {}", ranges.lowers.length);
         return ranges;
     }
 

@@ -146,16 +146,22 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
             incrementDocCount.accept(bucketOrd, (long) docCount);
         };
 
+        Function<Integer, Long> getBucketOrd = (activeIndex) -> {
+            long rangeStart = LongPoint.decodeDimension(ranges.lowers[activeIndex], 0);
+            rangeStart = fieldType.convertNanosToMillis(rangeStart);
+            return getBucketOrd(bucketOrdProducer().apply(rangeStart));
+        };
+
         Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
             try {
-                logger.debug("create DocIdSetBuilder of max doc {}", maxDoc);
+                logger.trace("create DocIdSetBuilder of max doc {}", maxDoc);
                 return new DocIdSetBuilder(maxDoc, values, fieldType.name());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         };
 
-        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, disBuilderSupplier);
+        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, disBuilderSupplier, getBucketOrd);
     }
 
     private static long getBucketOrd(long bucketOrd) {
