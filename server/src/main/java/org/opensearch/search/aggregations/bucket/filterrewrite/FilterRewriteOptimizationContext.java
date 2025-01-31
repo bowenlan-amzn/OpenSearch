@@ -123,7 +123,7 @@ public final class FilterRewriteOptimizationContext {
         Ranges ranges = getRanges(leafCtx, segmentMatchAll);
         if (ranges == null) return false;
 
-        consumeDebugInfo(aggregatorBridge.tryOptimize(values, incrementDocCount, ranges));
+        consumeDebugInfo(aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, leafCtx.reader().maxDoc()));
 
         optimizedSegments.incrementAndGet();
         logger.debug("Fast filter optimization applied to shard {} segment {}", shardId, leafCtx.ord);

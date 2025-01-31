@@ -229,19 +229,21 @@ final class PointTreeTraversal {
 
         private void collectDocId(int docId) {
             // if (docIdSetBuilders[activeIndex] == null) {
-            //     // TODO hard code for now, should be controlled by intersector grow
-            //     docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-            //     currentAdder = docIdSetBuilders[activeIndex].grow(1000);
+            // // TODO hard code for now, should be controlled by intersector grow
+            // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+            // currentAdder = docIdSetBuilders[activeIndex].grow(1000);
             // }
+            logger.debug("collect docId {}", docId);
             currentAdder.add(docId);
         }
 
         private void collectDocIdSet(DocIdSetIterator iter) throws IOException {
             // if (docIdSetBuilders[activeIndex] == null) {
-            //     // TODO hard code for now, should be controlled by intersector grow
-            //     docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-            //     currentAdder = docIdSetBuilders[activeIndex].grow(1000);
+            // // TODO hard code for now, should be controlled by intersector grow
+            // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+            // currentAdder = docIdSetBuilders[activeIndex].grow(1000);
             // }
+            logger.debug("collect disi {}", iter);
             currentAdder.add(iter);
         }
 
@@ -249,8 +251,8 @@ final class PointTreeTraversal {
             if (docIdSetBuilders[activeIndex] == null) {
                 docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
             }
-            logger.debug("grow docIdSetBuilder[{}] with count 200_000", activeIndex);
-            currentAdder = docIdSetBuilders[activeIndex].grow(200_000);
+            logger.debug("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
+            currentAdder = docIdSetBuilders[activeIndex].grow(count);
         }
 
         private void countNode(int count) {

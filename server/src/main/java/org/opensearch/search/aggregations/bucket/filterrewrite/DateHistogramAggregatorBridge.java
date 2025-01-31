@@ -8,6 +8,8 @@
 
 package org.opensearch.search.aggregations.bucket.filterrewrite;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PointValues;
@@ -31,6 +33,8 @@ import static org.opensearch.search.aggregations.bucket.filterrewrite.PointTreeT
  * For date histogram aggregation
  */
 public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
+
+    private static final Logger logger = LogManager.getLogger(Helper.loggerName);
 
     int maxRewriteFilters;
 
@@ -129,7 +133,8 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
     final FilterRewriteOptimizationContext.DebugInfo tryOptimize(
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
-        Ranges ranges
+        Ranges ranges,
+        int maxDoc
     ) throws IOException {
         int size = getSize();
 
@@ -143,7 +148,8 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
 
         Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
             try {
-                return new DocIdSetBuilder(2_000_000, values, fieldType.name());
+                logger.debug("create DocIdSetBuilder of max doc {}", maxDoc);
+                return new DocIdSetBuilder(maxDoc, values, fieldType.name());
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }

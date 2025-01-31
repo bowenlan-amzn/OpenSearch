@@ -77,7 +77,8 @@ public abstract class RangeAggregatorBridge extends AggregatorBridge {
     final FilterRewriteOptimizationContext.DebugInfo tryOptimize(
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
-        Ranges ranges
+        Ranges ranges,
+        int maxDoc
     ) throws IOException {
         int size = Integer.MAX_VALUE;
         BiConsumer<Integer, Integer> incrementFunc = (activeIndex, docCount) -> {
