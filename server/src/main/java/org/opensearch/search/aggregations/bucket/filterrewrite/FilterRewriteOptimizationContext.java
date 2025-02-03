@@ -15,7 +15,9 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.index.mapper.DocCountFieldMapper;
+import org.opensearch.search.aggregations.BucketCollector;
 import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.internal.SearchContext;
 
@@ -103,7 +105,7 @@ public final class FilterRewriteOptimizationContext {
         final LeafReaderContext leafCtx,
         final BiConsumer<Long, Long> incrementDocCount,
         boolean segmentMatchAll,
-        LeafBucketCollector sub
+        BucketCollector collectableSubAggregators
     ) throws IOException {
         segments.incrementAndGet();
         if (!canOptimize) {
@@ -143,11 +145,31 @@ public final class FilterRewriteOptimizationContext {
         // 1. List of Iterators per ranges
         // 2. Composite iterator
 
-        CompositeDocIdSetIterator iter = new CompositeDocIdSetIterator(debugInfo.iterators);
-        while (iter.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-            int currentDoc = iter.docID();
-            int bucket = iter.getCurrentBucket();
-            sub.collect(currentDoc, bucket);
+        // CompositeDocIdSetIterator iter = new CompositeDocIdSetIterator(debugInfo.iterators);
+        // while (iter.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+        // int currentDoc = iter.docID();
+        // int bucket = iter.getCurrentBucket();
+        // sub.collect(currentDoc, bucket);
+        // }
+
+        // let's not use composite disi
+        // try rebuilding the subagg leaf collector
+        // for each bucket ord
+
+        LeafBucketCollector sub = collectableSubAggregators.getLeafCollector(leafCtx);
+        for (int bucketOrd = 0; bucketOrd < debugInfo.builders.length; bucketOrd++) {
+            logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
+            DocIdSetBuilder builder = debugInfo.builders[bucketOrd];
+            if (builder == null) {
+                continue;
+            }
+            DocIdSetIterator iterator = debugInfo.builders[bucketOrd].build().iterator();
+            while (iterator.nextDoc() != NO_MORE_DOCS) {
+                int currentDoc = iterator.docID();
+                sub.collect(currentDoc, bucketOrd);
+            }
+            // resetting the sub collector after processing each bucket
+            sub = collectableSubAggregators.getLeafCollector(leafCtx);
         }
 
         return true;
@@ -187,6 +209,7 @@ public final class FilterRewriteOptimizationContext {
         private final AtomicInteger innerNodeVisited = new AtomicInteger(); // inner node visited
 
         public DocIdSetIterator[] iterators;
+        public DocIdSetBuilder[] builders;
 
         void visitLeaf() {
             leafNodeVisited.incrementAndGet();

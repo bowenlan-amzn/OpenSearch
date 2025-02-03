@@ -561,7 +561,7 @@ public final class CompositeAggregator extends BucketsAggregator {
             ctx,
             this::incrementBucketDocCount,
             segmentMatchAll(context, ctx),
-            sub
+            collectableSubAggregators
         );
         if (optimized) throw new CollectionTerminatedException();
 
