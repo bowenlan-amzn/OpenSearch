@@ -227,8 +227,8 @@ final class PointTreeTraversal {
         private final DocIdSetBuilder[] docIdSetBuilders;
         private final Supplier<DocIdSetBuilder> disBuilderSupplier;
         private DocIdSetBuilder.BulkAdder currentAdder;
-        private Function<Integer, Long> getBucketOrd;
-        private Map<Long, DocIdSetBuilder> bucketOrdinalToDocIdSetBuilder = new HashMap<>();
+        private final Function<Integer, Long> getBucketOrd;
+        private final Map<Long, DocIdSetBuilder> bucketOrdinalToDocIdSetBuilder = new HashMap<>();
 
         private int visitedRange = 0;
         private final int maxNumNonZeroRange;
