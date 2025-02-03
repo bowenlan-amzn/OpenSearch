@@ -18,18 +18,26 @@ import java.io.IOException;
  */
 public class CompositeDocIdSetIterator extends DocIdSetIterator {
     private final DocIdSetIterator[] iterators;
-    private final int numBuckets;
+
+    // Track active iterators to avoid scanning all
+    private final int[] activeIterators;  // non-exhausted iterators to its bucket
+    private int numActiveIterators;       // Number of non-exhausted iterators
+
     private int currentDoc = -1;
     private int currentBucket = -1;
 
-    /**
-     * Creates a composite view of DocIdSetIterators for a segment where
-     * each document belongs to exactly one bucket.
-     * @param ordinalToIterator Mapping of bucket ordinal to its DocIdSetIterator
-     */
-    public CompositeDocIdSetIterator(DocIdSetIterator[] ordinalToIterator) {
-        this.iterators = ordinalToIterator;
-        this.numBuckets = ordinalToIterator.length;
+    public CompositeDocIdSetIterator(DocIdSetIterator[] iterators) {
+        this.iterators = iterators;
+        int numBuckets = iterators.length;
+        this.activeIterators = new int[numBuckets];
+        this.numActiveIterators = 0;
+
+        // Initialize active iterator tracking
+        for (int i = 0; i < numBuckets; i++) {
+            if (iterators[i] != null) {
+                activeIterators[numActiveIterators++] = i;
+            }
+        }
     }
 
     @Override
@@ -37,11 +45,6 @@ public class CompositeDocIdSetIterator extends DocIdSetIterator {
         return currentDoc;
     }
 
-    /**
-     * Returns the bucket ordinal for the current document.
-     * Should only be called when positioned on a valid document.
-     * @return bucket ordinal for the current document, or -1 if no current document
-     */
     public int getCurrentBucket() {
         return currentBucket;
     }
@@ -53,46 +56,57 @@ public class CompositeDocIdSetIterator extends DocIdSetIterator {
 
     @Override
     public int advance(int target) throws IOException {
-        if (target == NO_MORE_DOCS) {
+        if (target == NO_MORE_DOCS || numActiveIterators == 0) {
             currentDoc = NO_MORE_DOCS;
             currentBucket = -1;
             return NO_MORE_DOCS;
         }
 
         int minDoc = NO_MORE_DOCS;
-        int minDocBucket = -1;
+        int minBucket = -1;
+        int remainingActive = 0;  // Counter for non-exhausted iterators
 
-        // Find the iterator with the lowest docID >= target
-        for (int bucketOrd = 0; bucketOrd < numBuckets; bucketOrd++) {
-            DocIdSetIterator iterator = iterators[bucketOrd];
-            if (iterator == null) {
-                continue;
-            }
+        // Only check currently active iterators
+        for (int i = 0; i < numActiveIterators; i++) {
+            int bucket = activeIterators[i];
+            DocIdSetIterator iterator = iterators[bucket];
 
             int doc = iterator.docID();
             if (doc < target) {
                 doc = iterator.advance(target);
             }
 
+            if (doc == NO_MORE_DOCS) {
+                // Iterator is exhausted, don't include it in active set
+                continue;
+            }
+
+            // Keep this iterator in our active set
+            activeIterators[remainingActive] = bucket;
+            remainingActive++;
+
             if (doc < minDoc) {
                 minDoc = doc;
-                minDocBucket = bucketOrd;
+                minBucket = bucket;
             }
         }
 
+        // Update count of active iterators
+        numActiveIterators = remainingActive;
+
         currentDoc = minDoc;
-        currentBucket = minDocBucket;
+        currentBucket = minBucket;
+
         return currentDoc;
     }
 
     @Override
     public long cost() {
-        long totalCost = 0;
-        for (DocIdSetIterator iterator : iterators) {
-            if (iterator != null) {
-                totalCost += iterator.cost();
-            }
+        long cost = 0;
+        for (int i = 0; i < numActiveIterators; i++) {
+            DocIdSetIterator iterator = iterators[activeIterators[i]];
+            cost += iterator.cost();
         }
-        return totalCost;
+        return cost;
     }
 }
