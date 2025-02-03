@@ -12,6 +12,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.CollectionTerminatedException;
+import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.CheckedRunnable;
@@ -82,24 +83,33 @@ final class PointTreeTraversal {
         }
         collector.finalizePreviousRange();
 
-        DocIdSetBuilder[] builders = collector.docIdSetBuilders;
-        logger.debug("length of docIdSetBuilders: {}", builders.length);
-        int totalCount = 0;
-        for (int i = 0; i < builders.length; i++) {
-            if (builders[i] != null) {
-                int count = 0;
-                DocIdSetIterator iterator = builders[i].build().iterator();
-                while (iterator.nextDoc() != NO_MORE_DOCS) {
-                    count++;
-                }
-                logger.trace(" docIdSetBuilder[{}] disi has documents: {}", i, count);
-                totalCount += count;
-            }
-        }
-        logger.debug("total count of documents from docIdSetBuilder: {}", totalCount);
+        // DocIdSetBuilder[] builders = collector.docIdSetBuilders;
+        // logger.debug("length of docIdSetBuilders: {}", builders.length);
+        // int totalCount = 0;
+        // for (int i = 0; i < builders.length; i++) {
+        // if (builders[i] != null) {
+        // int count = 0;
+        // DocIdSetIterator iterator = builders[i].build().iterator();
+        // while (iterator.nextDoc() != NO_MORE_DOCS) {
+        // count++;
+        // }
+        // logger.trace(" docIdSetBuilder[{}] disi has documents: {}", i, count);
+        // totalCount += count;
+        // }
+        // }
+        // logger.debug("total count of documents from docIdSetBuilder: {}", totalCount);
 
-        Map<Long, DocIdSetBuilder> map = collector.bucketOrdinalToDocIdSetBuilder;
-        logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", map.keySet());
+        Map<Long, DocIdSetBuilder> ordinalToBuilder = collector.bucketOrdinalToDocIdSetBuilder;
+        logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", ordinalToBuilder.keySet());
+        int maxOrdinal = ordinalToBuilder.keySet().stream().mapToInt(Long::intValue).max().orElse(0) + 1;
+        DocIdSetIterator[] iterators = new DocIdSetIterator[maxOrdinal];
+        for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
+            int ordinal = Math.toIntExact(entry.getKey());
+            DocIdSetBuilder builder = entry.getValue();
+            DocIdSet docIdSet = builder.build();
+            iterators[ordinal] = docIdSet.iterator();
+        }
+        debugInfo.iterators = iterators;
 
         return debugInfo;
     }

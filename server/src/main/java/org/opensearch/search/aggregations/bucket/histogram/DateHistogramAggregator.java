@@ -189,8 +189,15 @@ class DateHistogramAggregator extends BucketsAggregator implements SizedBucketAg
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
 
-        boolean optimized = filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, segmentMatchAll(context, ctx));
-        if (optimized) throw new CollectionTerminatedException();
+        boolean optimized = filterRewriteOptimizationContext.tryOptimize(
+            ctx,
+            this::incrementBucketDocCount,
+            segmentMatchAll(context, ctx),
+            sub
+        );
+        if (optimized) {
+            throw new CollectionTerminatedException();
+        }
 
         SortedNumericDocValues values = valuesSource.longValues(ctx);
         CompositeIndexFieldInfo supportedStarTree = getSupportedStarTree(this.context);

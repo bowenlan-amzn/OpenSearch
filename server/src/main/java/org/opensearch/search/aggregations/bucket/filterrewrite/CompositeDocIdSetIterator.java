@@ -11,36 +11,39 @@ package org.opensearch.search.aggregations.bucket.filterrewrite;
 import org.apache.lucene.search.DocIdSetIterator;
 
 import java.io.IOException;
-import java.util.Arrays;
 
 /**
- * A composite view of multiple DocIdSetIterators from single segment
+ * A composite iterator over multiple DocIdSetIterators where each document
+ * belongs to exactly one bucket within a single segment.
  */
 public class CompositeDocIdSetIterator extends DocIdSetIterator {
     private final DocIdSetIterator[] iterators;
-    private final int[] currentDocs;  // Current docId for each iterator
-    private final boolean[] exhausted; // Track if each iterator is exhausted
-    private int currentDoc = -1;      // Current doc for this composite iterator
-    private final int numIterators;
+    private final int numBuckets;
+    private int currentDoc = -1;
+    private int currentBucket = -1;
 
     /**
-     * Creates a composite view of multiple DocIdSetIterators
+     * Creates a composite view of DocIdSetIterators for a segment where
+     * each document belongs to exactly one bucket.
      * @param ordinalToIterator Mapping of bucket ordinal to its DocIdSetIterator
-     * @param maxOrdinal The maximum bucket ordinal (exclusive)
      */
-    public CompositeDocIdSetIterator(DocIdSetIterator[] ordinalToIterator, int maxOrdinal) {
-        this.iterators = Arrays.copyOf(ordinalToIterator, maxOrdinal);
-        this.numIterators = maxOrdinal;
-        this.currentDocs = new int[maxOrdinal];
-        this.exhausted = new boolean[maxOrdinal];
-
-        // Initialize currentDocs array to -1 for all iterators
-        Arrays.fill(currentDocs, -1);
+    public CompositeDocIdSetIterator(DocIdSetIterator[] ordinalToIterator) {
+        this.iterators = ordinalToIterator;
+        this.numBuckets = ordinalToIterator.length;
     }
 
     @Override
     public int docID() {
         return currentDoc;
+    }
+
+    /**
+     * Returns the bucket ordinal for the current document.
+     * Should only be called when positioned on a valid document.
+     * @return bucket ordinal for the current document, or -1 if no current document
+     */
+    public int getCurrentBucket() {
+        return currentBucket;
     }
 
     @Override
@@ -52,73 +55,44 @@ public class CompositeDocIdSetIterator extends DocIdSetIterator {
     public int advance(int target) throws IOException {
         if (target == NO_MORE_DOCS) {
             currentDoc = NO_MORE_DOCS;
+            currentBucket = -1;
             return NO_MORE_DOCS;
         }
 
         int minDoc = NO_MORE_DOCS;
+        int minDocBucket = -1;
 
-        // Advance all iterators that are behind target
-        for (int i = 0; i < numIterators; i++) {
-            if (iterators[i] == null) {
-                exhausted[i] = true;
+        // Find the iterator with the lowest docID >= target
+        for (int bucketOrd = 0; bucketOrd < numBuckets; bucketOrd++) {
+            DocIdSetIterator iterator = iterators[bucketOrd];
+            if (iterator == null) {
                 continue;
             }
 
-            if (!exhausted[i] && currentDocs[i] < target) {
-                int doc = iterators[i].advance(target);
-                if (doc == NO_MORE_DOCS) {
-                    exhausted[i] = true;
-                } else {
-                    currentDocs[i] = doc;
-                    minDoc = Math.min(minDoc, doc);
-                }
-            } else if (!exhausted[i]) {
-                minDoc = Math.min(minDoc, currentDocs[i]);
+            int doc = iterator.docID();
+            if (doc < target) {
+                doc = iterator.advance(target);
+            }
+
+            if (doc < minDoc) {
+                minDoc = doc;
+                minDocBucket = bucketOrd;
             }
         }
 
         currentDoc = minDoc;
+        currentBucket = minDocBucket;
         return currentDoc;
     }
 
     @Override
     public long cost() {
-        long maxCost = 0;
+        long totalCost = 0;
         for (DocIdSetIterator iterator : iterators) {
             if (iterator != null) {
-                maxCost = Math.max(maxCost, iterator.cost());
+                totalCost += iterator.cost();
             }
         }
-        return maxCost;
-    }
-
-    /**
-     * Checks if a specific bucket matches the current document
-     * @param ordinal The bucket ordinal to check
-     * @return true if the bucket matches the current document
-     */
-    public boolean matches(int ordinal) {
-        if (ordinal >= numIterators || currentDoc == NO_MORE_DOCS) {
-            return false;
-        }
-        return !exhausted[ordinal] && currentDocs[ordinal] == currentDoc;
-    }
-
-    /**
-     * Gets a bit set representing all buckets that match the current document
-     * @return A long where each bit position represents whether the corresponding bucket matches
-     */
-    public long getMatchingBuckets() {
-        if (currentDoc == NO_MORE_DOCS || numIterators > 64) {
-            return 0L;
-        }
-
-        long result = 0L;
-        for (int i = 0; i < numIterators; i++) {
-            if (matches(i)) {
-                result |= 1L << i;
-            }
-        }
-        return result;
+        return totalCost;
     }
 }

@@ -14,7 +14,9 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.PointValues;
+import org.apache.lucene.search.DocIdSetIterator;
 import org.opensearch.index.mapper.DocCountFieldMapper;
+import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
@@ -65,7 +67,8 @@ public final class FilterRewriteOptimizationContext {
     private boolean canOptimize(final Object parent, final int subAggLength, SearchContext context) throws IOException {
         if (context.maxAggRewriteFilters() == 0) return false;
 
-        if (parent != null || subAggLength != 0) return false;
+        // if (parent != null || subAggLength != 0) return false;
+        if (parent != null) return false;
 
         boolean canOptimize = aggregatorBridge.canOptimize();
         if (canOptimize) {
@@ -96,8 +99,12 @@ public final class FilterRewriteOptimizationContext {
      * @param incrementDocCount consume the doc_count results for certain ordinal
      * @param segmentMatchAll if your optimization can prepareFromSegment, you should pass in this flag to decide whether to prepareFromSegment
      */
-    public boolean tryOptimize(final LeafReaderContext leafCtx, final BiConsumer<Long, Long> incrementDocCount, boolean segmentMatchAll)
-        throws IOException {
+    public boolean tryOptimize(
+        final LeafReaderContext leafCtx,
+        final BiConsumer<Long, Long> incrementDocCount,
+        boolean segmentMatchAll,
+        LeafBucketCollector sub
+    ) throws IOException {
         segments.incrementAndGet();
         if (!canOptimize) {
             return false;
@@ -123,7 +130,8 @@ public final class FilterRewriteOptimizationContext {
         Ranges ranges = getRanges(leafCtx, segmentMatchAll);
         if (ranges == null) return false;
 
-        consumeDebugInfo(aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, leafCtx.reader().maxDoc()));
+        DebugInfo debugInfo = aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, leafCtx.reader().maxDoc());
+        consumeDebugInfo(debugInfo);
 
         optimizedSegments.incrementAndGet();
         logger.debug("Fast filter optimization applied to shard {} segment {}", shardId, leafCtx.ord);
@@ -134,6 +142,13 @@ public final class FilterRewriteOptimizationContext {
         // At least 2 ways to do Iterating
         // 1. List of Iterators per ranges
         // 2. Composite iterator
+
+        CompositeDocIdSetIterator iter = new CompositeDocIdSetIterator(debugInfo.iterators);
+        while (iter.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+            int currentDoc = iter.docID();
+            int bucket = iter.getCurrentBucket();
+            sub.collect(currentDoc, bucket);
+        }
 
         return true;
     }
@@ -170,6 +185,8 @@ public final class FilterRewriteOptimizationContext {
     static class DebugInfo {
         private final AtomicInteger leafNodeVisited = new AtomicInteger(); // leaf node visited
         private final AtomicInteger innerNodeVisited = new AtomicInteger(); // inner node visited
+
+        public DocIdSetIterator[] iterators;
 
         void visitLeaf() {
             leafNodeVisited.incrementAndGet();
