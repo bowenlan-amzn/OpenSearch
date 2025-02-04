@@ -12,7 +12,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.CollectionTerminatedException;
-import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.CheckedRunnable;
@@ -104,10 +103,10 @@ final class PointTreeTraversal {
         int maxOrdinal = ordinalToBuilder.keySet().stream().mapToInt(Long::intValue).max().orElse(0) + 1;
         // DocIdSetIterator[] iterators = new DocIdSetIterator[maxOrdinal];
         // for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
-        //     int ordinal = Math.toIntExact(entry.getKey());
-        //     DocIdSetBuilder builder = entry.getValue();
-        //     DocIdSet docIdSet = builder.build();
-        //     iterators[ordinal] = docIdSet.iterator();
+        // int ordinal = Math.toIntExact(entry.getKey());
+        // DocIdSetBuilder builder = entry.getValue();
+        // DocIdSet docIdSet = builder.build();
+        // iterators[ordinal] = docIdSet.iterator();
         // }
         // debugInfo.iterators = iterators;
 

@@ -15,6 +15,10 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.DocIdSetIterator;
+import org.apache.lucene.search.PointRangeQuery;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.ScoreMode;
+import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.index.mapper.DocCountFieldMapper;
 import org.opensearch.search.aggregations.BucketCollector;
@@ -22,6 +26,8 @@ import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
@@ -172,6 +178,51 @@ public final class FilterRewriteOptimizationContext {
             sub = collectableSubAggregators.getLeafCollector(leafCtx);
         }
 
+        return true;
+    }
+
+    List<Weight> weights;
+
+    public List<Weight> getWeights() {
+        return weights;
+    }
+
+    public boolean tryGetRanges(final LeafReaderContext leafCtx, boolean segmentMatchAll, SearchContext context) throws IOException {
+        if (!canOptimize) {
+            return false;
+        }
+
+        if (leafCtx.reader().hasDeletions()) return false;
+
+        PointValues values = leafCtx.reader().getPointValues(aggregatorBridge.fieldType.name());
+        if (values == null) return false;
+        // only proceed if every document corresponds to exactly one point
+        if (values.getDocCount() != values.size()) return false;
+
+        NumericDocValues docCountValues = DocValues.getNumeric(leafCtx.reader(), DocCountFieldMapper.NAME);
+        if (docCountValues.nextDoc() != NO_MORE_DOCS) {
+            logger.debug(
+                "Shard {} segment {} has at least one document with _doc_count field, skip fast filter optimization",
+                shardId,
+                leafCtx.ord
+            );
+            return false;
+        }
+
+        Ranges ranges = getRanges(leafCtx, segmentMatchAll);
+        if (ranges == null) return false;
+
+        List<Weight> weights = new ArrayList<>();
+        for (int i = 0; i < ranges.size; i++) {
+            Query query = new PointRangeQuery(aggregatorBridge.fieldType.name(), ranges.lowers[i], ranges.uppers[i], 1) {
+                @Override
+                protected String toString(int dimension, byte[] value) {
+                    return "";
+                }
+            };
+            weights.add(query.rewrite(context.searcher()).createWeight(context.searcher(), ScoreMode.COMPLETE_NO_SCORES, 1));
+        }
+        this.weights = weights;
         return true;
     }
 
