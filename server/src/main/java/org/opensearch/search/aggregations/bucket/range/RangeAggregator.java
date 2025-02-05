@@ -31,6 +31,8 @@
 
 package org.opensearch.search.aggregations.bucket.range;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.BulkScorer;
 import org.apache.lucene.search.CollectionTerminatedException;
@@ -260,6 +262,8 @@ public class RangeAggregator extends BucketsAggregator {
 
     private final FilterRewriteOptimizationContext filterRewriteOptimizationContext;
 
+    private final Logger logger = LogManager.getLogger(RangeAggregator.class);
+
     public RangeAggregator(
         String name,
         AggregatorFactories factories,
@@ -318,11 +322,13 @@ public class RangeAggregator extends BucketsAggregator {
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
         if (collectableSubAggregators == null) {
+            logger.debug("No sub-aggregators to collect");
             if (segmentMatchAll(context, ctx)
                 && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false, collectableSubAggregators)) {
                 throw new CollectionTerminatedException();
             }
         } else {
+            logger.debug("Collecting sub-aggregators");
             if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryGetRanges(ctx, false, context)) {
                 List<Weight> weights = filterRewriteOptimizationContext.getWeights();
                 class SubLeafCollector implements LeafCollector {
@@ -334,7 +340,7 @@ public class RangeAggregator extends BucketsAggregator {
 
                     @Override
                     public void collect(int docId) throws IOException {
-                        collectBucket(sub, docId, filterOrd);
+                        collectBucket(subCollector, docId, filterOrd);
                     }
                 }
                 Bits live = ctx.reader().getLiveDocs();
