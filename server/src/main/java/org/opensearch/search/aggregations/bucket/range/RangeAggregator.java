@@ -317,34 +317,41 @@ public class RangeAggregator extends BucketsAggregator {
 
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
-        if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryGetRanges(ctx, false, context)) {
-            List<Weight> weights = filterRewriteOptimizationContext.getWeights();
-            class SubLeafCollector implements LeafCollector {
-                LeafBucketCollector subCollector;
-                int filterOrd;
-
-                @Override
-                public void setScorer(Scorable scorer) throws IOException {}
-
-                @Override
-                public void collect(int docId) throws IOException {
-                    collectBucket(sub, docId, filterOrd);
-                }
+        if (collectableSubAggregators == null) {
+            if (segmentMatchAll(context, ctx)
+                && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false, collectableSubAggregators)) {
+                throw new CollectionTerminatedException();
             }
-            Bits live = ctx.reader().getLiveDocs();
-            SubLeafCollector subLeafCollector = new SubLeafCollector();
-            for (int i = 0; i < weights.size(); i++) {
-                Weight weight = weights.get(i);
-                BulkScorer scorer = weight.bulkScorer(ctx);
-                if (scorer == null) {
-                    continue;
-                }
-                subLeafCollector.subCollector = collectableSubAggregators.getLeafCollector(ctx);
-                subLeafCollector.filterOrd = i;
-                scorer.score(subLeafCollector, live, 0, NO_MORE_DOCS);
-            }
+        } else {
+            if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryGetRanges(ctx, false, context)) {
+                List<Weight> weights = filterRewriteOptimizationContext.getWeights();
+                class SubLeafCollector implements LeafCollector {
+                    LeafBucketCollector subCollector;
+                    int filterOrd;
 
-            throw new CollectionTerminatedException();
+                    @Override
+                    public void setScorer(Scorable scorer) throws IOException {}
+
+                    @Override
+                    public void collect(int docId) throws IOException {
+                        collectBucket(sub, docId, filterOrd);
+                    }
+                }
+                Bits live = ctx.reader().getLiveDocs();
+                SubLeafCollector subLeafCollector = new SubLeafCollector();
+                for (int i = 0; i < weights.size(); i++) {
+                    Weight weight = weights.get(i);
+                    BulkScorer scorer = weight.bulkScorer(ctx);
+                    if (scorer == null) {
+                        continue;
+                    }
+                    subLeafCollector.subCollector = collectableSubAggregators.getLeafCollector(ctx);
+                    subLeafCollector.filterOrd = i;
+                    scorer.score(subLeafCollector, live, 0, NO_MORE_DOCS);
+                }
+
+                throw new CollectionTerminatedException();
+            }
         }
 
         final SortedNumericDoubleValues values = valuesSource.doubleValues(ctx);

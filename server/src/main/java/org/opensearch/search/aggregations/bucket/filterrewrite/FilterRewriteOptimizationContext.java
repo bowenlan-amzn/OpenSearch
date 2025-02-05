@@ -22,7 +22,6 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.index.mapper.DocCountFieldMapper;
 import org.opensearch.search.aggregations.BucketCollector;
-import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
@@ -162,21 +161,21 @@ public final class FilterRewriteOptimizationContext {
         // try rebuilding the subagg leaf collector
         // for each bucket ord
 
-        LeafBucketCollector sub = collectableSubAggregators.getLeafCollector(leafCtx);
-        for (int bucketOrd = 0; bucketOrd < debugInfo.builders.length; bucketOrd++) {
-            logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
-            DocIdSetBuilder builder = debugInfo.builders[bucketOrd];
-            if (builder == null) {
-                continue;
-            }
-            DocIdSetIterator iterator = debugInfo.builders[bucketOrd].build().iterator();
-            while (iterator.nextDoc() != NO_MORE_DOCS) {
-                int currentDoc = iterator.docID();
-                sub.collect(currentDoc, bucketOrd);
-            }
-            // resetting the sub collector after processing each bucket
-            sub = collectableSubAggregators.getLeafCollector(leafCtx);
-        }
+        // LeafBucketCollector sub = collectableSubAggregators.getLeafCollector(leafCtx);
+        // for (int bucketOrd = 0; bucketOrd < debugInfo.builders.length; bucketOrd++) {
+        // logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
+        // DocIdSetBuilder builder = debugInfo.builders[bucketOrd];
+        // if (builder == null) {
+        // continue;
+        // }
+        // DocIdSetIterator iterator = debugInfo.builders[bucketOrd].build().iterator();
+        // while (iterator.nextDoc() != NO_MORE_DOCS) {
+        // int currentDoc = iterator.docID();
+        // sub.collect(currentDoc, bucketOrd);
+        // }
+        // // resetting the sub collector after processing each bucket
+        // sub = collectableSubAggregators.getLeafCollector(leafCtx);
+        // }
 
         return true;
     }

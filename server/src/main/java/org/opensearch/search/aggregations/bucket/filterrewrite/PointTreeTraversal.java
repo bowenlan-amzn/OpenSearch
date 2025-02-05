@@ -82,25 +82,9 @@ final class PointTreeTraversal {
         }
         collector.finalizePreviousRange();
 
-        // DocIdSetBuilder[] builders = collector.docIdSetBuilders;
-        // logger.debug("length of docIdSetBuilders: {}", builders.length);
-        // int totalCount = 0;
-        // for (int i = 0; i < builders.length; i++) {
-        // if (builders[i] != null) {
-        // int count = 0;
-        // DocIdSetIterator iterator = builders[i].build().iterator();
-        // while (iterator.nextDoc() != NO_MORE_DOCS) {
-        // count++;
-        // }
-        // logger.trace(" docIdSetBuilder[{}] disi has documents: {}", i, count);
-        // totalCount += count;
-        // }
-        // }
-        // logger.debug("total count of documents from docIdSetBuilder: {}", totalCount);
-
-        Map<Long, DocIdSetBuilder> ordinalToBuilder = collector.bucketOrdinalToDocIdSetBuilder;
-        logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", ordinalToBuilder.keySet());
-        int maxOrdinal = ordinalToBuilder.keySet().stream().mapToInt(Long::intValue).max().orElse(0) + 1;
+        // Map<Long, DocIdSetBuilder> ordinalToBuilder = collector.bucketOrdinalToDocIdSetBuilder;
+        // logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", ordinalToBuilder.keySet());
+        // int maxOrdinal = ordinalToBuilder.keySet().stream().mapToInt(Long::intValue).max().orElse(0) + 1;
         // DocIdSetIterator[] iterators = new DocIdSetIterator[maxOrdinal];
         // for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
         // int ordinal = Math.toIntExact(entry.getKey());
@@ -110,12 +94,12 @@ final class PointTreeTraversal {
         // }
         // debugInfo.iterators = iterators;
 
-        DocIdSetBuilder[] builder = new DocIdSetBuilder[maxOrdinal];
-        for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
-            int ordinal = Math.toIntExact(entry.getKey());
-            builder[ordinal] = entry.getValue();
-        }
-        debugInfo.builders = builder;
+        // DocIdSetBuilder[] builder = new DocIdSetBuilder[maxOrdinal];
+        // for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
+        // int ordinal = Math.toIntExact(entry.getKey());
+        // builder[ordinal] = entry.getValue();
+        // }
+        // debugInfo.builders = builder;
 
         return debugInfo;
     }
@@ -131,7 +115,7 @@ final class PointTreeTraversal {
         switch (r) {
             case CELL_INSIDE_QUERY:
                 collector.countNode((int) pointTree.size());
-                pointTree.visitDocIDs(visitor);
+                // pointTree.visitDocIDs(visitor);
                 debug.visitInner();
                 break;
             case CELL_CROSSES_QUERY:
@@ -154,28 +138,28 @@ final class PointTreeTraversal {
 
             @Override
             public void grow(int count) {
-                collector.grow(count);
+                // collector.grow(count);
             }
 
             @Override
             public void visit(int docID) {
                 // this branch should be unreachable
-                // throw new UnsupportedOperationException(
-                // "This IntersectVisitor does not perform any actions on a " + "docID=" + docID + " node being visited"
-                // );
-                collector.collectDocId(docID);
+                throw new UnsupportedOperationException(
+                    "This IntersectVisitor does not perform any actions on a " + "docID=" + docID + " node being visited"
+                );
+                // collector.collectDocId(docID);
             }
 
             @Override
             public void visit(DocIdSetIterator iterator) throws IOException {
-                collector.collectDocIdSet(iterator);
+                // collector.collectDocIdSet(iterator);
             }
 
             @Override
             public void visit(int docID, byte[] packedValue) throws IOException {
                 visitPoints(packedValue, collector::count);
 
-                collector.collectDocId(docID);
+                // collector.collectDocId(docID);
             }
 
             @Override
@@ -186,7 +170,7 @@ final class PointTreeTraversal {
                     }
                 });
 
-                collector.collectDocIdSet(iterator);
+                // collector.collectDocIdSet(iterator);
             }
 
             private void visitPoints(byte[] packedValue, CheckedRunnable<IOException> collect) throws IOException {
@@ -261,21 +245,11 @@ final class PointTreeTraversal {
         }
 
         private void collectDocId(int docId) {
-            // if (docIdSetBuilders[activeIndex] == null) {
-            // // TODO hard code for now, should be controlled by intersector grow
-            // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-            // currentAdder = docIdSetBuilders[activeIndex].grow(1000);
-            // }
             logger.trace("collect docId {}", docId);
             currentAdder.add(docId);
         }
 
         private void collectDocIdSet(DocIdSetIterator iter) throws IOException {
-            // if (docIdSetBuilders[activeIndex] == null) {
-            // // TODO hard code for now, should be controlled by intersector grow
-            // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-            // currentAdder = docIdSetBuilders[activeIndex].grow(1000);
-            // }
             logger.trace("collect disi {}", iter);
             currentAdder.add(iter);
         }
@@ -298,11 +272,11 @@ final class PointTreeTraversal {
                 counter = 0;
             }
 
-            long bucketOrd = getBucketOrd.apply(activeIndex);
-            if (docIdSetBuilders[activeIndex] != null) {
-                logger.trace("finalize docIdSetBuilder[{}] with bucket ordinal {}", activeIndex, bucketOrd);
-                bucketOrdinalToDocIdSetBuilder.put(bucketOrd, docIdSetBuilders[activeIndex]);
-            }
+            // long bucketOrd = getBucketOrd.apply(activeIndex);
+            // if (docIdSetBuilders[activeIndex] != null) {
+            // logger.trace("finalize docIdSetBuilder[{}] with bucket ordinal {}", activeIndex, bucketOrd);
+            // bucketOrdinalToDocIdSetBuilder.put(bucketOrd, docIdSetBuilders[activeIndex]);
+            // }
         }
 
         /**
