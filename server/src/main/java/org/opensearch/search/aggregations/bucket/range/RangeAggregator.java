@@ -321,7 +321,7 @@ public class RangeAggregator extends BucketsAggregator {
 
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
-        if (collectableSubAggregators == null) {
+        if (subAggregators.length == 0) {
             logger.debug("No sub-aggregators to collect");
             if (segmentMatchAll(context, ctx)
                 && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false, collectableSubAggregators)) {
