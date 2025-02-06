@@ -718,7 +718,10 @@ public abstract class Rounding implements Writeable {
 
             @Override
             public long round(long utcMillis) {
-                return offset.localToUtcInThisOffset(unit.roundFloor(offset.utcToLocalTime(utcMillis)));
+                long localTime = offset.utcToLocalTime(utcMillis);
+                long roundedLocalTime = unit.roundFloor(localTime);
+                return offset.localToUtcInThisOffset(roundedLocalTime);
+                // return offset.localToUtcInThisOffset(unit.roundFloor(offset.utcToLocalTime(utcMillis)));
             }
 
             @Override
