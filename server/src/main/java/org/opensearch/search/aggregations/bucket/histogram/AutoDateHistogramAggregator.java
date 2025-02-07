@@ -35,7 +35,6 @@ import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.util.CollectionUtil;
 import org.opensearch.common.Rounding;
@@ -55,8 +54,6 @@ import org.opensearch.search.aggregations.LeafBucketCollectorBase;
 import org.opensearch.search.aggregations.bucket.DeferableBucketAggregator;
 import org.opensearch.search.aggregations.bucket.DeferringBucketCollector;
 import org.opensearch.search.aggregations.bucket.MergingBucketsDeferringCollector;
-import org.opensearch.search.aggregations.bucket.filterrewrite.DateHistogramAggregatorBridge;
-import org.opensearch.search.aggregations.bucket.filterrewrite.FilterRewriteOptimizationContext;
 import org.opensearch.search.aggregations.bucket.histogram.AutoDateHistogramAggregationBuilder.RoundingInfo;
 import org.opensearch.search.aggregations.bucket.terms.LongKeyedBucketOrds;
 import org.opensearch.search.aggregations.support.ValuesSource;
@@ -69,8 +66,6 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.LongToIntFunction;
-
-import static org.opensearch.search.aggregations.bucket.filterrewrite.DateHistogramAggregatorBridge.segmentMatchAll;
 
 /**
  * An aggregator for date values that attempts to return a specific number of
@@ -135,10 +130,10 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
 
     protected final RoundingInfo[] roundingInfos;
     protected final int targetBuckets;
-    protected int roundingIdx;
-    protected Rounding.Prepared preparedRounding;
+    // protected int roundingIdx;
+    // protected Rounding.Prepared preparedRounding;
 
-    private final FilterRewriteOptimizationContext filterRewriteOptimizationContext;
+    // private final FilterRewriteOptimizationContext filterRewriteOptimizationContext;
 
     private AutoDateHistogramAggregator(
         String name,
@@ -159,54 +154,54 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
         this.formatter = valuesSourceConfig.format();
         this.roundingInfos = roundingInfos;
         this.roundingPreparer = roundingPreparer;
-        this.preparedRounding = prepareRounding(0);
+        // this.preparedRounding = prepareRounding(0);
 
-        DateHistogramAggregatorBridge bridge = new DateHistogramAggregatorBridge() {
-            @Override
-            protected boolean canOptimize() {
-                return canOptimize(valuesSourceConfig);
-            }
-
-            @Override
-            protected void prepare() throws IOException {
-                buildRanges(context);
-            }
-
-            @Override
-            protected Rounding getRounding(final long low, final long high) {
-                // max - min / targetBuckets = bestDuration
-                // find the right innerInterval this bestDuration belongs to
-                // since we cannot exceed targetBuckets, bestDuration should go up,
-                // so the right innerInterval should be an upper bound
-                long bestDuration = (high - low) / targetBuckets;
-                // reset so this function is idempotent
-                roundingIdx = 0;
-                while (roundingIdx < roundingInfos.length - 1) {
-                    final RoundingInfo curRoundingInfo = roundingInfos[roundingIdx];
-                    final int temp = curRoundingInfo.innerIntervals[curRoundingInfo.innerIntervals.length - 1];
-                    // If the interval duration is covered by the maximum inner interval,
-                    // we can start with this outer interval for creating the buckets
-                    if (bestDuration <= temp * curRoundingInfo.roughEstimateDurationMillis) {
-                        break;
-                    }
-                    roundingIdx++;
-                }
-
-                preparedRounding = prepareRounding(roundingIdx);
-                return roundingInfos[roundingIdx].rounding;
-            }
-
-            @Override
-            protected Prepared getRoundingPrepared() {
-                return preparedRounding;
-            }
-
-            @Override
-            protected Function<Long, Long> bucketOrdProducer() {
-                return (key) -> getBucketOrds().add(0, preparedRounding.round((long) key));
-            }
-        };
-        filterRewriteOptimizationContext = new FilterRewriteOptimizationContext(bridge, parent, subAggregators.length, context);
+        // DateHistogramAggregatorBridge bridge = new DateHistogramAggregatorBridge() {
+        // @Override
+        // protected boolean canOptimize() {
+        // return canOptimize(valuesSourceConfig);
+        // }
+        //
+        // @Override
+        // protected void prepare() throws IOException {
+        // buildRanges(context);
+        // }
+        //
+        // @Override
+        // protected Rounding getRounding(final long low, final long high) {
+        // // max - min / targetBuckets = bestDuration
+        // // find the right innerInterval this bestDuration belongs to
+        // // since we cannot exceed targetBuckets, bestDuration should go up,
+        // // so the right innerInterval should be an upper bound
+        // long bestDuration = (high - low) / targetBuckets;
+        // // reset so this function is idempotent
+        // roundingIdx = 0;
+        // while (roundingIdx < roundingInfos.length - 1) {
+        // final RoundingInfo curRoundingInfo = roundingInfos[roundingIdx];
+        // final int temp = curRoundingInfo.innerIntervals[curRoundingInfo.innerIntervals.length - 1];
+        // // If the interval duration is covered by the maximum inner interval,
+        // // we can start with this outer interval for creating the buckets
+        // if (bestDuration <= temp * curRoundingInfo.roughEstimateDurationMillis) {
+        // break;
+        // }
+        // roundingIdx++;
+        // }
+        //
+        // preparedRounding = prepareRounding(roundingIdx);
+        // return roundingInfos[roundingIdx].rounding;
+        // }
+        //
+        // @Override
+        // protected Prepared getRoundingPrepared() {
+        // return preparedRounding;
+        // }
+        //
+        // @Override
+        // protected Function<Long, Long> bucketOrdProducer() {
+        // return (key) -> getBucketOrds().add(0, preparedRounding.round((long) key));
+        // }
+        // };
+        // filterRewriteOptimizationContext = new FilterRewriteOptimizationContext(bridge, parent, subAggregators.length, context);
     }
 
     protected abstract LongKeyedBucketOrds getBucketOrds();
@@ -240,13 +235,13 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
 
-        boolean optimized = filterRewriteOptimizationContext.tryOptimize(
-            ctx,
-            this::incrementBucketDocCount,
-            segmentMatchAll(context, ctx),
-            collectableSubAggregators
-        );
-        if (optimized) throw new CollectionTerminatedException();
+        // boolean optimized = filterRewriteOptimizationContext.tryOptimize(
+        // ctx,
+        // this::incrementBucketDocCount,
+        // segmentMatchAll(context, ctx),
+        // collectableSubAggregators
+        // );
+        // if (optimized) throw new CollectionTerminatedException();
 
         final SortedNumericDocValues values = valuesSource.longValues(ctx);
         final NumericDocValues singleton = DocValues.unwrapSingleton(values);
@@ -314,7 +309,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
     @Override
     public void collectDebugInfo(BiConsumer<String, Object> add) {
         super.collectDebugInfo(add);
-        filterRewriteOptimizationContext.populateDebugInfo(add);
+        // filterRewriteOptimizationContext.populateDebugInfo(add);
     }
 
     /**
@@ -333,6 +328,8 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
      * @opensearch.internal
      */
     private static class FromSingle extends AutoDateHistogramAggregator {
+        private int roundingIdx;
+        private Rounding.Prepared preparedRounding;
         /**
          * Map from value to bucket ordinals.
          * <p>
@@ -370,6 +367,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
                 metadata
             );
 
+            preparedRounding = prepareRounding(0);
             bucketOrds = new LongKeyedBucketOrds.FromSingle(context.bigArrays());
         }
 
