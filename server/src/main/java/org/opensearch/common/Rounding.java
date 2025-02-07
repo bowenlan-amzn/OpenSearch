@@ -39,8 +39,6 @@ import org.opensearch.OpenSearchException;
 import org.opensearch.common.LocalTimeOffset.Gap;
 import org.opensearch.common.LocalTimeOffset.Overlap;
 import org.opensearch.common.annotation.PublicApi;
-import org.opensearch.common.round.Roundable;
-import org.opensearch.common.round.RoundableFactory;
 import org.opensearch.common.time.DateUtils;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.core.common.io.stream.StreamInput;
