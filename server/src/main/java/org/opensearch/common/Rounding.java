@@ -63,6 +63,7 @@ import java.time.temporal.TemporalField;
 import java.time.temporal.TemporalQueries;
 import java.time.zone.ZoneOffsetTransition;
 import java.time.zone.ZoneRules;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -452,7 +453,7 @@ public abstract class Rounding implements Writeable {
                 values = ArrayUtil.grow(values, i + 1);
                 values[i++] = rounded;
             }
-            return new ArrayRounding(RoundableFactory.create(values, i), this);
+            return new ArrayRounding(values, i, this);
         }
     }
 
@@ -461,17 +462,26 @@ public abstract class Rounding implements Writeable {
      * pre-calculated round-down points to speed up lookups.
      */
     private static class ArrayRounding implements Prepared {
-        private final Roundable roundable;
+        private final long[] values;
+        private final int max;
         private final Prepared delegate;
 
-        public ArrayRounding(Roundable roundable, Prepared delegate) {
-            this.roundable = roundable;
+        private ArrayRounding(long[] values, int max, Prepared delegate) {
+            this.values = values;
+            this.max = max;
             this.delegate = delegate;
         }
 
         @Override
         public long round(long utcMillis) {
-            return roundable.floor(utcMillis);
+            assert values[0] <= utcMillis : utcMillis + " must be after " + values[0];
+            int idx = Arrays.binarySearch(values, 0, max, utcMillis);
+            assert idx != -1 : "The insertion point is before the array! This should have tripped the assertion above.";
+            assert -1 - idx <= values.length : "This insertion point is after the end of the array.";
+            if (idx < 0) {
+                idx = -2 - idx;
+            }
+            return values[idx];
         }
 
         @Override
