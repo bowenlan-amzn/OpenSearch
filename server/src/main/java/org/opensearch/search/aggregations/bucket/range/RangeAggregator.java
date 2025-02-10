@@ -324,40 +324,62 @@ public class RangeAggregator extends BucketsAggregator {
         if (subAggregators.length == 0) {
             logger.debug("No sub-aggregators to collect");
             if (segmentMatchAll(context, ctx)
-                && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false, collectableSubAggregators)) {
+                && filterRewriteOptimizationContext.tryOptimize(
+                    ctx,
+                    this::incrementBucketDocCount,
+                    false,
+                    collectableSubAggregators,
+                    sub
+                )) {
                 throw new CollectionTerminatedException();
             }
         } else {
             logger.debug("Collecting sub-aggregators");
-            if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryGetRanges(ctx, false, context)) {
-                List<Weight> weights = filterRewriteOptimizationContext.getWeights();
-                class SubLeafCollector implements LeafCollector {
-                    LeafBucketCollector subCollector;
-                    int filterOrd;
-
-                    @Override
-                    public void setScorer(Scorable scorer) throws IOException {}
-
-                    @Override
-                    public void collect(int docId) throws IOException {
-                        collectBucket(subCollector, docId, filterOrd);
-                    }
+            if (true) {
+                if (segmentMatchAll(context, ctx)
+                    && filterRewriteOptimizationContext.tryOptimize(
+                        ctx,
+                        this::incrementBucketDocCount,
+                        false,
+                        collectableSubAggregators,
+                        sub
+                    )) {
+                    throw new CollectionTerminatedException();
                 }
-                Bits live = ctx.reader().getLiveDocs();
-                SubLeafCollector subLeafCollector = new SubLeafCollector();
-                for (int i = 0; i < weights.size(); i++) {
-                    Weight weight = weights.get(i);
-                    BulkScorer scorer = weight.bulkScorer(ctx);
-                    if (scorer == null) {
-                        continue;
-                    }
-                    subLeafCollector.subCollector = collectableSubAggregators.getLeafCollector(ctx);
-                    subLeafCollector.filterOrd = i;
-                    scorer.score(subLeafCollector, live, 0, NO_MORE_DOCS);
-                }
-
-                throw new CollectionTerminatedException();
             }
+
+            if (false) {
+                if (segmentMatchAll(context, ctx) && filterRewriteOptimizationContext.tryGetRanges(ctx, false, context)) {
+                    List<Weight> weights = filterRewriteOptimizationContext.getWeights();
+                    class SubLeafCollector implements LeafCollector {
+                        LeafBucketCollector subCollector;
+                        int filterOrd;
+
+                        @Override
+                        public void setScorer(Scorable scorer) throws IOException {}
+
+                        @Override
+                        public void collect(int docId) throws IOException {
+                            collectBucket(subCollector, docId, filterOrd);
+                        }
+                    }
+                    Bits live = ctx.reader().getLiveDocs();
+                    SubLeafCollector subLeafCollector = new SubLeafCollector();
+                    for (int i = 0; i < weights.size(); i++) {
+                        Weight weight = weights.get(i);
+                        BulkScorer scorer = weight.bulkScorer(ctx);
+                        if (scorer == null) {
+                            continue;
+                        }
+                        subLeafCollector.subCollector = collectableSubAggregators.getLeafCollector(ctx);
+                        subLeafCollector.filterOrd = i;
+                        scorer.score(subLeafCollector, live, 0, NO_MORE_DOCS);
+                    }
+
+                    throw new CollectionTerminatedException();
+                }
+            }
+
         }
 
         final SortedNumericDoubleValues values = valuesSource.doubleValues(ctx);

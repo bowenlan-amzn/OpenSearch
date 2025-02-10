@@ -22,6 +22,7 @@ import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.index.mapper.DocCountFieldMapper;
 import org.opensearch.search.aggregations.BucketCollector;
+import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
@@ -51,6 +52,8 @@ public final class FilterRewriteOptimizationContext {
 
     private Ranges ranges; // built at shard level
 
+    private int subAggLength;
+
     // debug info related fields
     private final AtomicInteger leafNodeVisited = new AtomicInteger();
     private final AtomicInteger innerNodeVisited = new AtomicInteger();
@@ -76,6 +79,7 @@ public final class FilterRewriteOptimizationContext {
 
         // if (parent != null || subAggLength != 0) return false;
         if (parent != null) return false;
+        this.subAggLength = subAggLength;
 
         boolean canOptimize = aggregatorBridge.canOptimize();
         if (canOptimize) {
@@ -110,7 +114,8 @@ public final class FilterRewriteOptimizationContext {
         final LeafReaderContext leafCtx,
         final BiConsumer<Long, Long> incrementDocCount,
         boolean segmentMatchAll,
-        BucketCollector collectableSubAggregators
+        BucketCollector collectableSubAggregators,
+        LeafBucketCollector sub
     ) throws IOException {
         segments.incrementAndGet();
         if (!canOptimize) {
@@ -150,12 +155,16 @@ public final class FilterRewriteOptimizationContext {
         // 1. List of Iterators per ranges
         // 2. Composite iterator
 
-        // CompositeDocIdSetIterator iter = new CompositeDocIdSetIterator(debugInfo.iterators);
-        // while (iter.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-        // int currentDoc = iter.docID();
-        // int bucket = iter.getCurrentBucket();
-        // sub.collect(currentDoc, bucket);
-        // }
+        if (subAggLength == 0) {
+            return true;
+        }
+
+        CompositeDocIdSetIterator iter = new CompositeDocIdSetIterator(debugInfo.iterators);
+        while (iter.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
+            int currentDoc = iter.docID();
+            int bucket = iter.getCurrentBucket();
+            sub.collect(currentDoc, bucket);
+        }
 
         // let's not use composite disi
         // try rebuilding the subagg leaf collector

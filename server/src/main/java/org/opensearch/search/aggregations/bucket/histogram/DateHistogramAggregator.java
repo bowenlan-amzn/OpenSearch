@@ -33,7 +33,6 @@ package org.opensearch.search.aggregations.bucket.histogram;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SortedNumericDocValues;
-import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.util.CollectionUtil;
 import org.opensearch.common.Nullable;
@@ -60,8 +59,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
-
-import static org.opensearch.search.aggregations.bucket.filterrewrite.DateHistogramAggregatorBridge.segmentMatchAll;
 
 /**
  * An aggregator for date values. Every date is rounded down using a configured
@@ -167,15 +164,16 @@ class DateHistogramAggregator extends BucketsAggregator implements SizedBucketAg
             return LeafBucketCollector.NO_OP_COLLECTOR;
         }
 
-        boolean optimized = filterRewriteOptimizationContext.tryOptimize(
-            ctx,
-            this::incrementBucketDocCount,
-            segmentMatchAll(context, ctx),
-            collectableSubAggregators
-        );
-        if (optimized) {
-            throw new CollectionTerminatedException();
-        }
+        // boolean optimized = filterRewriteOptimizationContext.tryOptimize(
+        // ctx,
+        // this::incrementBucketDocCount,
+        // segmentMatchAll(context, ctx),
+        // collectableSubAggregators,
+        // sub
+        // );
+        // if (optimized) {
+        // throw new CollectionTerminatedException();
+        // }
 
         SortedNumericDocValues values = valuesSource.longValues(ctx);
         return new LeafBucketCollectorBase(sub, values) {
