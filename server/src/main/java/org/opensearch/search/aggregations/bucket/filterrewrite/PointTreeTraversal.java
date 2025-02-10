@@ -86,14 +86,15 @@ final class PointTreeTraversal {
         Map<Long, DocIdSetBuilder> ordinalToBuilder = collector.bucketOrdinalToDocIdSetBuilder;
         logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", ordinalToBuilder.keySet());
         int maxOrdinal = ordinalToBuilder.keySet().stream().mapToInt(Long::intValue).max().orElse(0) + 1;
-        DocIdSetIterator[] iterators = new DocIdSetIterator[maxOrdinal];
-        for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
-            int ordinal = Math.toIntExact(entry.getKey());
-            DocIdSetBuilder builder = entry.getValue();
-            DocIdSet docIdSet = builder.build();
-            iterators[ordinal] = docIdSet.iterator();
-        }
-        debugInfo.iterators = iterators;
+
+        // DocIdSetIterator[] iterators = new DocIdSetIterator[maxOrdinal];
+        // for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
+        //     int ordinal = Math.toIntExact(entry.getKey());
+        //     DocIdSetBuilder builder = entry.getValue();
+        //     DocIdSet docIdSet = builder.build();
+        //     iterators[ordinal] = docIdSet.iterator();
+        // }
+        // debugInfo.iterators = iterators;
 
         DocIdSetBuilder[] builder = new DocIdSetBuilder[maxOrdinal];
         for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
