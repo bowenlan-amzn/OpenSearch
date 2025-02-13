@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 import static org.apache.lucene.search.DocIdSetIterator.NO_MORE_DOCS;
 
@@ -142,7 +143,19 @@ public final class FilterRewriteOptimizationContext {
         Ranges ranges = getRanges(leafCtx, segmentMatchAll);
         if (ranges == null) return false;
 
-        DebugInfo debugInfo = aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, leafCtx.reader().maxDoc());
+        // pass in the information of whether subagg exists
+        Supplier<DocIdSetBuilder> disBuilderSupplier = null;
+        if (subAggLength != 0) {
+            disBuilderSupplier = () -> {
+                try {
+                    return new DocIdSetBuilder(leafCtx.reader().maxDoc(), values, aggregatorBridge.fieldType.name());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            };
+        }
+
+        DebugInfo debugInfo = aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, disBuilderSupplier);
         consumeDebugInfo(debugInfo);
 
         optimizedSegments.incrementAndGet();
@@ -158,17 +171,6 @@ public final class FilterRewriteOptimizationContext {
         if (subAggLength == 0) {
             return true;
         }
-
-        // CompositeDocIdSetIterator iter = new CompositeDocIdSetIterator(debugInfo.iterators);
-        // while (iter.nextDoc() != DocIdSetIterator.NO_MORE_DOCS) {
-        // int currentDoc = iter.docID();
-        // int bucket = iter.getCurrentBucket();
-        // sub.collect(currentDoc, bucket);
-        // }
-
-        // let's not use composite disi
-        // try rebuilding the subagg leaf collector
-        // for each bucket ord
 
         for (int bucketOrd = 0; bucketOrd < debugInfo.builders.length; bucketOrd++) {
             logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);

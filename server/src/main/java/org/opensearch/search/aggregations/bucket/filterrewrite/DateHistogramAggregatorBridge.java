@@ -136,7 +136,7 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
         Ranges ranges,
-        int maxDoc
+        Supplier<DocIdSetBuilder> disBuilderSupplier
     ) throws IOException {
         int size = getSize();
 
@@ -152,15 +152,6 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
             long rangeStart = LongPoint.decodeDimension(ranges.lowers[activeIndex], 0);
             rangeStart = fieldType.convertNanosToMillis(rangeStart);
             return getBucketOrd(bucketOrdProducer().apply(rangeStart));
-        };
-
-        Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
-            try {
-                logger.trace("create DocIdSetBuilder of max doc {}", maxDoc);
-                return new DocIdSetBuilder(maxDoc, values, fieldType.name());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
         };
 
         return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, disBuilderSupplier, getBucketOrd);

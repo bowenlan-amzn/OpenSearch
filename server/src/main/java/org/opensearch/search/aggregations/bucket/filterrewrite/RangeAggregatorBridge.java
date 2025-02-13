@@ -80,21 +80,13 @@ public abstract class RangeAggregatorBridge extends AggregatorBridge {
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
         Ranges ranges,
-        int maxDoc
+        Supplier<DocIdSetBuilder> disBuilderSupplier
     ) throws IOException {
         int size = Integer.MAX_VALUE;
 
         BiConsumer<Integer, Integer> incrementFunc = (activeIndex, docCount) -> {
             long bucketOrd = bucketOrdProducer().apply(activeIndex);
             incrementDocCount.accept(bucketOrd, (long) docCount);
-        };
-
-        Supplier<DocIdSetBuilder> disBuilderSupplier = () -> {
-            try {
-                return new DocIdSetBuilder(maxDoc, values, fieldType.name());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
         };
 
         Function<Integer, Long> getBucketOrd = (activeIndex) -> bucketOrdProducer().apply(activeIndex);

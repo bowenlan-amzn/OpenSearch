@@ -12,7 +12,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.CollectionTerminatedException;
-import org.apache.lucene.search.DocIdSet;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.common.CheckedRunnable;
@@ -64,6 +63,9 @@ final class PointTreeTraversal {
             logger.debug("No ranges match the query, skip the fast filter optimization");
             return debugInfo;
         }
+
+        // tree collector should have a function to help with recording bucket ordinal to disi
+        // At the end of a range, it should be able to calculate the bucket ordinal, and record the disi
         RangeCollectorForPointTree collector = new RangeCollectorForPointTree(
             incrementDocCount,
             maxNumNonZeroRanges,
@@ -72,8 +74,6 @@ final class PointTreeTraversal {
             disBuilderSupplier,
             getBucketOrd
         );
-        // tree collector should have a function to help with recording bucket ordinal to disi
-        // At the end of a range, it should be able to calculate the bucket ordinal, and record the disi
 
         PointValues.IntersectVisitor visitor = getIntersectVisitor(collector);
         try {
@@ -86,15 +86,6 @@ final class PointTreeTraversal {
         Map<Long, DocIdSetBuilder> ordinalToBuilder = collector.bucketOrdinalToDocIdSetBuilder;
         logger.debug("keys of bucketOrdinalToDocIdSetBuilder: {}", ordinalToBuilder.keySet());
         int maxOrdinal = ordinalToBuilder.keySet().stream().mapToInt(Long::intValue).max().orElse(0) + 1;
-
-        // DocIdSetIterator[] iterators = new DocIdSetIterator[maxOrdinal];
-        // for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
-        //     int ordinal = Math.toIntExact(entry.getKey());
-        //     DocIdSetBuilder builder = entry.getValue();
-        //     DocIdSet docIdSet = builder.build();
-        //     iterators[ordinal] = docIdSet.iterator();
-        // }
-        // debugInfo.iterators = iterators;
 
         DocIdSetBuilder[] builder = new DocIdSetBuilder[maxOrdinal];
         for (Map.Entry<Long, DocIdSetBuilder> entry : ordinalToBuilder.entrySet()) {
@@ -117,7 +108,9 @@ final class PointTreeTraversal {
         switch (r) {
             case CELL_INSIDE_QUERY:
                 collector.countNode((int) pointTree.size());
-                pointTree.visitDocIDs(visitor);
+                if (collector.hasSubAgg) {
+                    pointTree.visitDocIDs(visitor);
+                }
                 debug.visitInner();
                 break;
             case CELL_CROSSES_QUERY:
@@ -135,44 +128,58 @@ final class PointTreeTraversal {
         }
     }
 
+    // how to handle both count and collect docIdSet in the same visitor?
     private static PointValues.IntersectVisitor getIntersectVisitor(RangeCollectorForPointTree collector) {
         return new PointValues.IntersectVisitor() {
 
             @Override
             public void grow(int count) {
-                collector.grow(count);
+                if (collector.hasSubAgg) {
+                    collector.grow(count);
+                }
             }
 
             @Override
             public void visit(int docID) {
-                // this branch should be unreachable
-                // throw new UnsupportedOperationException(
-                // "This IntersectVisitor does not perform any actions on a " + "docID=" + docID + " node being visited"
-                // );
+                if (!collector.hasSubAgg) {
+                    throw new UnsupportedOperationException(
+                        "This visitor should not perform any actions when there's no subAgg and node is fully contained by the query"
+                    );
+                }
                 collector.collectDocId(docID);
             }
 
             @Override
             public void visit(DocIdSetIterator iterator) throws IOException {
+                if (!collector.hasSubAgg) {
+                    throw new UnsupportedOperationException(
+                        "No visit actions allowed when there's no subAgg and node is fully contained by the query"
+                    );
+                }
                 collector.collectDocIdSet(iterator);
             }
 
             @Override
             public void visit(int docID, byte[] packedValue) throws IOException {
-                visitPoints(packedValue, collector::count);
-
-                collector.collectDocId(docID);
+                visitPoints(packedValue, () -> {
+                    collector.count();
+                    if (collector.hasSubAgg) {
+                        collector.collectDocId(docID);
+                    }
+                });
             }
 
             @Override
             public void visit(DocIdSetIterator iterator, byte[] packedValue) throws IOException {
                 visitPoints(packedValue, () -> {
+                    // note: iterator can only iterate once
                     for (int doc = iterator.nextDoc(); doc != NO_MORE_DOCS; doc = iterator.nextDoc()) {
                         collector.count();
+                        if (collector.hasSubAgg) {
+                            collector.collectDocId(doc);
+                        }
                     }
                 });
-
-                collector.collectDocIdSet(iterator);
             }
 
             private void visitPoints(byte[] packedValue, CheckedRunnable<IOException> collect) throws IOException {
@@ -219,6 +226,8 @@ final class PointTreeTraversal {
         private final DocIdSetBuilder[] docIdSetBuilders;
         private final Supplier<DocIdSetBuilder> disBuilderSupplier;
         private DocIdSetBuilder.BulkAdder currentAdder;
+
+        private boolean hasSubAgg = false;
         private final Function<Integer, Long> getBucketOrd;
         private final Map<Long, DocIdSetBuilder> bucketOrdinalToDocIdSetBuilder = new HashMap<>();
 
@@ -240,6 +249,21 @@ final class PointTreeTraversal {
             this.docIdSetBuilders = new DocIdSetBuilder[ranges.size];
             this.disBuilderSupplier = disBuilderSupplier;
             this.getBucketOrd = getBucketOrd;
+            if (disBuilderSupplier != null) {
+                hasSubAgg = true;
+            }
+        }
+
+        private void grow(int count) {
+            if (docIdSetBuilders[activeIndex] == null) {
+                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+            }
+            logger.trace("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
+            currentAdder = docIdSetBuilders[activeIndex].grow(count);
+        }
+
+        private void countNode(int count) {
+            counter += count;
         }
 
         private void count() {
@@ -256,28 +280,17 @@ final class PointTreeTraversal {
             currentAdder.add(iter);
         }
 
-        private void grow(int count) {
-            if (docIdSetBuilders[activeIndex] == null) {
-                docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
-            }
-            logger.trace("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
-            currentAdder = docIdSetBuilders[activeIndex].grow(count);
-        }
-
-        private void countNode(int count) {
-            counter += count;
-        }
-
         private void finalizePreviousRange() {
             if (counter > 0) {
                 incrementRangeDocCount.accept(activeIndex, counter);
                 counter = 0;
             }
 
-            long bucketOrd = getBucketOrd.apply(activeIndex);
-            if (docIdSetBuilders[activeIndex] != null) {
+            if (hasSubAgg && currentAdder != null) {
+                long bucketOrd = getBucketOrd.apply(activeIndex);
                 logger.trace("finalize docIdSetBuilder[{}] with bucket ordinal {}", activeIndex, bucketOrd);
                 bucketOrdinalToDocIdSetBuilder.put(bucketOrd, docIdSetBuilders[activeIndex]);
+                currentAdder = null;
             }
         }
 

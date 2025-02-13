@@ -10,11 +10,13 @@ package org.opensearch.search.aggregations.bucket.filterrewrite;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PointValues;
+import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.index.mapper.MappedFieldType;
 
 import java.io.IOException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * This interface provides a bridge between an aggregator and the optimization context, allowing
@@ -80,6 +82,6 @@ public abstract class AggregatorBridge {
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
         Ranges ranges,
-        int maxDoc
+        Supplier<DocIdSetBuilder> disBuilderSupplier
     ) throws IOException;
 }

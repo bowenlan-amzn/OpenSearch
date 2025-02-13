@@ -379,7 +379,6 @@ public class RangeAggregator extends BucketsAggregator {
                     throw new CollectionTerminatedException();
                 }
             }
-
         }
 
         final SortedNumericDoubleValues values = valuesSource.doubleValues(ctx);
