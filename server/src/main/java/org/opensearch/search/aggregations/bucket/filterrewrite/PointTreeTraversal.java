@@ -185,7 +185,7 @@ final class PointTreeTraversal {
             private void visitPoints(byte[] packedValue, CheckedRunnable<IOException> collect) throws IOException {
                 if (!collector.withinUpperBound(packedValue)) {
                     collector.finalizePreviousRange();
-                    if (collector.iterateRangeEnd(packedValue)) {
+                    if (collector.iterateRangeEnd(packedValue, true)) {
                         throw new CollectionTerminatedException();
                     }
                 }
@@ -200,7 +200,7 @@ final class PointTreeTraversal {
                 // try to find the first range that may collect values from this cell
                 if (!collector.withinUpperBound(minPackedValue)) {
                     collector.finalizePreviousRange();
-                    if (collector.iterateRangeEnd(minPackedValue)) {
+                    if (collector.iterateRangeEnd(minPackedValue, false)) {
                         throw new CollectionTerminatedException();
                     }
                 }
@@ -231,6 +231,8 @@ final class PointTreeTraversal {
         private final Function<Integer, Long> getBucketOrd;
         private final Map<Long, DocIdSetBuilder> bucketOrdinalToDocIdSetBuilder = new HashMap<>();
 
+        private int lastGrowCount;
+
         private int visitedRange = 0;
         private final int maxNumNonZeroRange;
 
@@ -260,6 +262,7 @@ final class PointTreeTraversal {
             }
             logger.trace("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
             currentAdder = docIdSetBuilders[activeIndex].grow(count);
+            lastGrowCount = count;
         }
 
         private void countNode(int count) {
@@ -295,18 +298,31 @@ final class PointTreeTraversal {
         }
 
         /**
+         * Iterate to the first range that can include the given value
+         * under the assumption that ranges are not overlapping and increasing
+         *
+         * @param value the value that is outside current lower bound
+         * @param inLeaf whether this method is called when in the leaf node
          * @return true when iterator exhausted or collect enough non-zero ranges
          */
-        private boolean iterateRangeEnd(byte[] value) {
-            // the new value may not be contiguous to the previous one
-            // so try to find the first next range that cross the new value
+        private boolean iterateRangeEnd(byte[] value, boolean inLeaf) {
             while (!withinUpperBound(value)) {
                 if (++activeIndex >= ranges.size) {
                     return true;
                 }
             }
             visitedRange++;
-            return visitedRange > maxNumNonZeroRange;
+            if (visitedRange > maxNumNonZeroRange) {
+                return true;
+            } else {
+                // edge case: if finalizePreviousRange is called within the leaf node
+                // currentAdder is reset and grow would not be called immediately
+                // one way is to replay previous grow count again for this scenario
+                if (hasSubAgg && inLeaf && currentAdder == null) {
+                    grow(lastGrowCount);
+                }
+                return false;
+            }
         }
 
         private boolean withinLowerBound(byte[] value) {
