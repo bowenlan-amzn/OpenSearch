@@ -6,7 +6,7 @@
  * compatible open source license.
  */
 
-package org.opensearch.search.aggregations.bucket.range;
+package org.opensearch.search.aggregations.bucket.filterrewrite;
 
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.SortedNumericDocValuesField;
@@ -23,11 +23,15 @@ import org.opensearch.core.indices.breaker.NoneCircuitBreakerService;
 import org.opensearch.index.mapper.DateFieldMapper;
 import org.opensearch.index.mapper.NumberFieldMapper;
 import org.opensearch.index.mapper.ParseContext;
+import org.opensearch.search.aggregations.AggregationBuilder;
+import org.opensearch.search.aggregations.Aggregator;
 import org.opensearch.search.aggregations.AggregatorTestCase;
 import org.opensearch.search.aggregations.InternalAggregation;
 import org.opensearch.search.aggregations.MultiBucketConsumerService;
 import org.opensearch.search.aggregations.bucket.histogram.AutoDateHistogramAggregationBuilder;
 import org.opensearch.search.aggregations.bucket.histogram.InternalAutoDateHistogram;
+import org.opensearch.search.aggregations.bucket.range.InternalRange;
+import org.opensearch.search.aggregations.bucket.range.RangeAggregationBuilder;
 import org.opensearch.search.aggregations.pipeline.PipelineAggregator;
 import org.opensearch.search.internal.SearchContext;
 
@@ -35,10 +39,11 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.opensearch.test.InternalAggregationTestCase.DEFAULT_MAX_BUCKETS;
 
-public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
+public class FilterRewriteSubAggTests extends AggregatorTestCase {
     private String longField = "metric";
     private String dateField = "timestamp";
     private Query matchAllQuery = new MatchAllDocsQuery();
@@ -48,7 +53,7 @@ public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
     private String rangeAggName = "range";
     private String autoDateAggName = "auto";
 
-    public void testExample() throws IOException {
+    public void testRangeBasic() throws IOException {
         Instant base = Instant.parse("2020-03-01T00:00:00Z");
         List<TestDoc> docs = Collections.singletonList(new TestDoc(1, base));
 
@@ -67,9 +72,10 @@ public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
         assertEquals(1, firstAuto.getBuckets().size());
     }
 
-    public void testOverlap() throws IOException {
+    public void testRangeOverlap() throws IOException {
         Instant base = Instant.parse("2020-03-01T00:00:00Z");
         List<TestDoc> docs = List.of(
+            new TestDoc(-1, base),
             new TestDoc(1, base),
             new TestDoc(1, base.plusSeconds(3600)),
             new TestDoc(1, base.plusSeconds(7200)),
@@ -91,7 +97,8 @@ public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
         assertEquals(3, firstAuto.getBuckets().size());
     }
 
-    private InternalRange executeAggregation(List<TestDoc> docs, RangeAggregationBuilder aggregationBuilder) throws IOException {
+    private <IA extends InternalAggregation> IA executeAggregation(List<TestDoc> docs, RangeAggregationBuilder aggregationBuilder)
+        throws IOException {
         try (Directory directory = setupIndex(docs)) {
             try (DirectoryReader indexReader = DirectoryReader.open(directory)) {
                 return executeAggregationOnReader(indexReader, aggregationBuilder);
@@ -109,8 +116,10 @@ public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
         return directory;
     }
 
-    private InternalRange executeAggregationOnReader(DirectoryReader indexReader, RangeAggregationBuilder aggregationBuilder)
-        throws IOException {
+    private <IA extends InternalAggregation> IA executeAggregationOnReader(
+        DirectoryReader indexReader,
+        AggregationBuilder aggregationBuilder
+    ) throws IOException {
         IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 
         MultiBucketConsumerService.MultiBucketConsumer bucketConsumer = createBucketConsumer();
@@ -122,20 +131,23 @@ public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
             longFT,
             dateFT
         );
-        RangeAggregator aggregator = createAggregator(aggregationBuilder, searchContext);
+        Aggregator aggregator = createAggregator(aggregationBuilder, searchContext);
+        CountingAggregator countingAggregator = new CountingAggregator(new AtomicInteger(), aggregator);
 
         // Execute aggregation
-        aggregator.preCollection();
-        indexSearcher.search(matchAllQuery, aggregator);
-        aggregator.postCollection();
+        countingAggregator.preCollection();
+        indexSearcher.search(matchAllQuery, countingAggregator);
+        countingAggregator.postCollection();
 
         // Reduce results
-        InternalRange topLevel = (InternalRange) aggregator.buildTopLevel();
+        IA topLevel = (IA) countingAggregator.buildTopLevel();
         MultiBucketConsumerService.MultiBucketConsumer reduceBucketConsumer = createReduceBucketConsumer();
-        InternalAggregation.ReduceContext context = createReduceContext(aggregator, reduceBucketConsumer);
+        InternalAggregation.ReduceContext context = createReduceContext(countingAggregator, reduceBucketConsumer);
 
-        InternalRange result = (InternalRange) topLevel.reduce(Collections.singletonList(topLevel), context);
+        IA result = (IA) topLevel.reduce(Collections.singletonList(topLevel), context);
         doAssertReducedMultiBucketConsumer(result, reduceBucketConsumer);
+
+        assertEquals("Expect not using collect to do aggregation", 0, countingAggregator.getCollectCount().get());
 
         return result;
     }
@@ -155,7 +167,7 @@ public class RangeAutoDateAggregatorTests extends AggregatorTestCase {
     }
 
     private InternalAggregation.ReduceContext createReduceContext(
-        RangeAggregator aggregator,
+        Aggregator aggregator,
         MultiBucketConsumerService.MultiBucketConsumer reduceBucketConsumer
     ) {
         return InternalAggregation.ReduceContext.forFinalReduction(
