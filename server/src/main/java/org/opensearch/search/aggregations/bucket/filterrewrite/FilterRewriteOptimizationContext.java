@@ -15,9 +15,6 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.search.DocIdSetIterator;
-import org.apache.lucene.search.PointRangeQuery;
-import org.apache.lucene.search.Query;
-import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.util.DocIdSetBuilder;
 import org.opensearch.index.mapper.DocCountFieldMapper;
@@ -26,7 +23,6 @@ import org.opensearch.search.aggregations.LeafBucketCollector;
 import org.opensearch.search.internal.SearchContext;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -155,30 +151,25 @@ public final class FilterRewriteOptimizationContext {
             };
         }
 
-        DebugInfo debugInfo = aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, disBuilderSupplier);
-        consumeDebugInfo(debugInfo);
+        OptimizeResult optimizeResult = aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, disBuilderSupplier);
+        consumeDebugInfo(optimizeResult);
 
         optimizedSegments.incrementAndGet();
         logger.debug("Fast filter optimization applied to shard {} segment {}", shardId, leafCtx.ord);
         logger.debug("Crossed leaf nodes: {}, inner nodes: {}", leafNodeVisited, innerNodeVisited);
 
-        // TODO refactor the tryOptimize to return a Result object which not only contains DebugInfo
-        // but also the DocIdSetIterator for sub aggregation
-        // At least 2 ways to do Iterating
-        // 1. List of Iterators per ranges
-        // 2. Composite iterator
-
         if (subAggLength == 0) {
             return true;
         }
 
-        for (int bucketOrd = 0; bucketOrd < debugInfo.builders.length; bucketOrd++) {
+        // Handle sub aggregation
+        for (int bucketOrd = 0; bucketOrd < optimizeResult.builders.length; bucketOrd++) {
             logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
-            DocIdSetBuilder builder = debugInfo.builders[bucketOrd];
+            DocIdSetBuilder builder = optimizeResult.builders[bucketOrd];
             if (builder == null) {
                 continue;
             }
-            DocIdSetIterator iterator = debugInfo.builders[bucketOrd].build().iterator();
+            DocIdSetIterator iterator = optimizeResult.builders[bucketOrd].build().iterator();
             while (iterator.nextDoc() != NO_MORE_DOCS) {
                 int currentDoc = iterator.docID();
                 sub.collect(currentDoc, bucketOrd);
@@ -194,45 +185,6 @@ public final class FilterRewriteOptimizationContext {
 
     public List<Weight> getWeights() {
         return weights;
-    }
-
-    public boolean tryGetRanges(final LeafReaderContext leafCtx, boolean segmentMatchAll, SearchContext context) throws IOException {
-        if (!canOptimize) {
-            return false;
-        }
-
-        if (leafCtx.reader().hasDeletions()) return false;
-
-        PointValues values = leafCtx.reader().getPointValues(aggregatorBridge.fieldType.name());
-        if (values == null) return false;
-        // only proceed if every document corresponds to exactly one point
-        if (values.getDocCount() != values.size()) return false;
-
-        NumericDocValues docCountValues = DocValues.getNumeric(leafCtx.reader(), DocCountFieldMapper.NAME);
-        if (docCountValues.nextDoc() != NO_MORE_DOCS) {
-            logger.debug(
-                "Shard {} segment {} has at least one document with _doc_count field, skip fast filter optimization",
-                shardId,
-                leafCtx.ord
-            );
-            return false;
-        }
-
-        Ranges ranges = getRanges(leafCtx, segmentMatchAll);
-        if (ranges == null) return false;
-
-        List<Weight> weights = new ArrayList<>();
-        for (int i = 0; i < ranges.size; i++) {
-            Query query = new PointRangeQuery(aggregatorBridge.fieldType.name(), ranges.lowers[i], ranges.uppers[i], 1) {
-                @Override
-                protected String toString(int dimension, byte[] value) {
-                    return "";
-                }
-            };
-            weights.add(query.rewrite(context.searcher()).createWeight(context.searcher(), ScoreMode.COMPLETE_NO_SCORES, 1));
-        }
-        this.weights = weights;
-        return true;
     }
 
     Ranges getRanges(LeafReaderContext leafCtx, boolean segmentMatchAll) {
@@ -264,11 +216,10 @@ public final class FilterRewriteOptimizationContext {
     /**
      * Contains debug info of BKD traversal to show in profile
      */
-    static class DebugInfo {
+    static class OptimizeResult {
         private final AtomicInteger leafNodeVisited = new AtomicInteger(); // leaf node visited
         private final AtomicInteger innerNodeVisited = new AtomicInteger(); // inner node visited
 
-        public DocIdSetIterator[] iterators;
         public DocIdSetBuilder[] builders;
 
         void visitLeaf() {
@@ -280,7 +231,7 @@ public final class FilterRewriteOptimizationContext {
         }
     }
 
-    void consumeDebugInfo(DebugInfo debug) {
+    void consumeDebugInfo(OptimizeResult debug) {
         leafNodeVisited.addAndGet(debug.leafNodeVisited.get());
         innerNodeVisited.addAndGet(debug.innerNodeVisited.get());
     }

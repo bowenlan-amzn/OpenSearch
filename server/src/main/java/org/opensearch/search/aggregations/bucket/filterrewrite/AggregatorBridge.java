@@ -8,6 +8,8 @@
 
 package org.opensearch.search.aggregations.bucket.filterrewrite;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PointValues;
 import org.apache.lucene.util.DocIdSetBuilder;
@@ -16,7 +18,10 @@ import org.opensearch.index.mapper.MappedFieldType;
 import java.io.IOException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
+
+import static org.opensearch.search.aggregations.bucket.filterrewrite.PointTreeTraversal.multiRangesTraverse;
 
 /**
  * This interface provides a bridge between an aggregator and the optimization context, allowing
@@ -33,6 +38,8 @@ import java.util.function.Supplier;
  * @opensearch.internal
  */
 public abstract class AggregatorBridge {
+
+    static final Logger logger = LogManager.getLogger(Helper.loggerName);
 
     /**
      * The field type associated with this aggregator bridge.
@@ -78,10 +85,43 @@ public abstract class AggregatorBridge {
      * @param incrementDocCount a consumer to increment the document count for a range bucket. The First parameter is document count, the second is the key of the bucket
      * @param ranges
      */
-    abstract FilterRewriteOptimizationContext.DebugInfo tryOptimize(
+    abstract FilterRewriteOptimizationContext.OptimizeResult tryOptimize(
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
         Ranges ranges,
         Supplier<DocIdSetBuilder> disBuilderSupplier
     ) throws IOException;
+
+    static FilterRewriteOptimizationContext.OptimizeResult getResult(
+        PointValues values,
+        BiConsumer<Long, Long> incrementDocCount,
+        Ranges ranges,
+        Supplier<DocIdSetBuilder> disBuilderSupplier,
+        Function<Integer, Long> getBucketOrd,
+        int size
+    ) throws IOException {
+        BiConsumer<Integer, Integer> incrementFunc = (activeIndex, docCount) -> {
+            long bucketOrd = getBucketOrd.apply(activeIndex);
+            incrementDocCount.accept(bucketOrd, (long) docCount);
+        };
+
+        PointValues.PointTree tree = values.getPointTree();
+        FilterRewriteOptimizationContext.OptimizeResult optimizeResult = new FilterRewriteOptimizationContext.OptimizeResult();
+        int activeIndex = ranges.firstRangeIndex(tree.getMinPackedValue(), tree.getMaxPackedValue());
+        if (activeIndex < 0) {
+            logger.debug("No ranges match the query, skip the fast filter optimization");
+            return optimizeResult;
+        }
+        PointTreeTraversal.RangeCollectorForPointTree collector = new PointTreeTraversal.RangeCollectorForPointTree(
+            ranges,
+            incrementFunc,
+            size,
+            activeIndex,
+            disBuilderSupplier,
+            getBucketOrd,
+            optimizeResult
+        );
+
+        return multiRangesTraverse(tree, collector);
+    }
 }

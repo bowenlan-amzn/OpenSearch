@@ -8,8 +8,6 @@
 
 package org.opensearch.search.aggregations.bucket.filterrewrite;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.document.LongPoint;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.PointValues;
@@ -29,14 +27,10 @@ import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import static org.opensearch.search.aggregations.bucket.filterrewrite.PointTreeTraversal.multiRangesTraverse;
-
 /**
  * For date histogram aggregation
  */
 public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
-
-    private static final Logger logger = LogManager.getLogger(Helper.loggerName);
 
     int maxRewriteFilters;
 
@@ -127,12 +121,15 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
         return (DateFieldMapper.DateFieldType) fieldType;
     }
 
+    /**
+     * Get the size of buckets to stop early
+     */
     protected int getSize() {
         return Integer.MAX_VALUE;
     }
 
     @Override
-    final FilterRewriteOptimizationContext.DebugInfo tryOptimize(
+    final FilterRewriteOptimizationContext.OptimizeResult tryOptimize(
         PointValues values,
         BiConsumer<Long, Long> incrementDocCount,
         Ranges ranges,
@@ -141,12 +138,6 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
         int size = getSize();
 
         DateFieldMapper.DateFieldType fieldType = getFieldType();
-        BiConsumer<Integer, Integer> incrementFunc = (activeIndex, docCount) -> {
-            long rangeStart = LongPoint.decodeDimension(ranges.lowers[activeIndex], 0);
-            rangeStart = fieldType.convertNanosToMillis(rangeStart);
-            long bucketOrd = getBucketOrd(bucketOrdProducer().apply(rangeStart));
-            incrementDocCount.accept(bucketOrd, (long) docCount);
-        };
 
         Function<Integer, Long> getBucketOrd = (activeIndex) -> {
             long rangeStart = LongPoint.decodeDimension(ranges.lowers[activeIndex], 0);
@@ -154,7 +145,7 @@ public abstract class DateHistogramAggregatorBridge extends AggregatorBridge {
             return getBucketOrd(bucketOrdProducer().apply(rangeStart));
         };
 
-        return multiRangesTraverse(values.getPointTree(), ranges, incrementFunc, size, disBuilderSupplier, getBucketOrd);
+        return getResult(values, incrementDocCount, ranges, disBuilderSupplier, getBucketOrd, size);
     }
 
     private static long getBucketOrd(long bucketOrd) {
