@@ -627,10 +627,10 @@ public class AutoDateHistogramAggregatorTests extends DateHistogramAggregatorTes
             dataset.add(date);
         }
         final Map<Integer, Integer> bucketsToExpectedDocCountMap = new HashMap<>();
-        // bucketsToExpectedDocCountMap.put(120, 1);
-        // bucketsToExpectedDocCountMap.put(60, 5);
-        // bucketsToExpectedDocCountMap.put(20, 10);
-        // bucketsToExpectedDocCountMap.put(10, 30);
+        bucketsToExpectedDocCountMap.put(120, 1);
+        bucketsToExpectedDocCountMap.put(60, 5);
+        bucketsToExpectedDocCountMap.put(20, 10);
+        bucketsToExpectedDocCountMap.put(10, 30);
         bucketsToExpectedDocCountMap.put(3, 60);
         final Map.Entry<Integer, Integer> randomEntry = randomFrom(bucketsToExpectedDocCountMap.entrySet());
         testSearchCase(

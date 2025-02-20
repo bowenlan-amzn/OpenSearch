@@ -334,8 +334,6 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
      * @opensearch.internal
      */
     private static class FromSingle extends AutoDateHistogramAggregator {
-        private int roundingIdx;
-        private Rounding.Prepared preparedRounding;
         /**
          * Map from value to bucket ordinals.
          * <p>
@@ -373,7 +371,6 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
                 metadata
             );
 
-            preparedRounding = prepareRounding(0);
             bucketOrds = new LongKeyedBucketOrds.FromSingle(context.bigArrays());
         }
 
