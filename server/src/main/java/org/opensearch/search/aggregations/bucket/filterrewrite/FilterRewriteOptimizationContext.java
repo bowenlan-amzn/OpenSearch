@@ -73,7 +73,7 @@ public final class FilterRewriteOptimizationContext {
         if (context.maxAggRewriteFilters() == 0) return false;
 
         if (parent != null) return false;
-        this.subAggLength = subAggLength;
+        this.subAggLength = 1;
 
         boolean canOptimize = aggregatorBridge.canOptimize();
         if (canOptimize) {
@@ -158,20 +158,20 @@ public final class FilterRewriteOptimizationContext {
         }
 
         // Handle sub aggregation
-        for (int bucketOrd = 0; bucketOrd < optimizeResult.builders.length; bucketOrd++) {
-            logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
-            DocIdSetBuilder builder = optimizeResult.builders[bucketOrd];
-            if (builder == null) {
-                continue;
-            }
-            DocIdSetIterator iterator = optimizeResult.builders[bucketOrd].build().iterator();
-            while (iterator.nextDoc() != NO_MORE_DOCS) {
-                int currentDoc = iterator.docID();
-                sub.collect(currentDoc, bucketOrd);
-            }
-            // resetting the sub collector after processing each bucket
-            sub = collectableSubAggregators.getLeafCollector(leafCtx);
-        }
+        // for (int bucketOrd = 0; bucketOrd < optimizeResult.builders.length; bucketOrd++) {
+        //     logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
+        //     DocIdSetBuilder builder = optimizeResult.builders[bucketOrd];
+        //     if (builder == null) {
+        //         continue;
+        //     }
+        //     DocIdSetIterator iterator = optimizeResult.builders[bucketOrd].build().iterator();
+        //     while (iterator.nextDoc() != NO_MORE_DOCS) {
+        //         int currentDoc = iterator.docID();
+        //         sub.collect(currentDoc, bucketOrd);
+        //     }
+        //     // resetting the sub collector after processing each bucket
+        //     sub = collectableSubAggregators.getLeafCollector(leafCtx);
+        // }
 
         return true;
     }
