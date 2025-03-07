@@ -210,8 +210,7 @@ class DateHistogramAggregator extends BucketsAggregator implements SizedBucketAg
             ctx,
             this::incrementBucketDocCount,
             segmentMatchAll(context, ctx),
-            collectableSubAggregators,
-            sub
+            collectableSubAggregators
         );
         if (optimized) {
             throw new CollectionTerminatedException();

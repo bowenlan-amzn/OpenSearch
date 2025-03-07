@@ -255,8 +255,7 @@ abstract class AutoDateHistogramAggregator extends DeferableBucketAggregator {
             ctx,
             this::incrementBucketDocCount,
             segmentMatchAll(context, ctx),
-            collectableSubAggregators,
-            sub
+            collectableSubAggregators
         );
         if (optimized) throw new CollectionTerminatedException();
 

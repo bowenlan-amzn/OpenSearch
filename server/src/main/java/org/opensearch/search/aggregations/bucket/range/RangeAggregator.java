@@ -320,7 +320,7 @@ public class RangeAggregator extends BucketsAggregator {
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
         if (segmentMatchAll(context, ctx)
-            && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false, collectableSubAggregators, sub)) {
+            && filterRewriteOptimizationContext.tryOptimize(ctx, this::incrementBucketDocCount, false, collectableSubAggregators)) {
             throw new CollectionTerminatedException();
         }
 

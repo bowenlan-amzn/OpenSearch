@@ -102,14 +102,13 @@ public final class FilterRewriteOptimizationContext {
      * Usage: invoked at segment level — in getLeafCollector of aggregator
      *
      * @param incrementDocCount consume the doc_count results for certain ordinal
-     * @param segmentMatchAll if your optimization can prepareFromSegment, you should pass in this flag to decide whether to prepareFromSegment
+     * @param segmentMatchAll   if your optimization can prepareFromSegment, you should pass in this flag to decide whether to prepareFromSegment
      */
     public boolean tryOptimize(
         final LeafReaderContext leafCtx,
         final BiConsumer<Long, Long> incrementDocCount,
         boolean segmentMatchAll,
-        BucketCollector collectableSubAggregators,
-        LeafBucketCollector sub
+        BucketCollector subAggregators
     ) throws IOException {
         segments.incrementAndGet();
         if (!canOptimize) {
@@ -158,20 +157,23 @@ public final class FilterRewriteOptimizationContext {
         }
 
         // Handle sub aggregation
-        // for (int bucketOrd = 0; bucketOrd < optimizeResult.builders.length; bucketOrd++) {
-        //     logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
-        //     DocIdSetBuilder builder = optimizeResult.builders[bucketOrd];
-        //     if (builder == null) {
-        //         continue;
-        //     }
-        //     DocIdSetIterator iterator = optimizeResult.builders[bucketOrd].build().iterator();
-        //     while (iterator.nextDoc() != NO_MORE_DOCS) {
-        //         int currentDoc = iterator.docID();
-        //         sub.collect(currentDoc, bucketOrd);
-        //     }
-        //     // resetting the sub collector after processing each bucket
-        //     sub = collectableSubAggregators.getLeafCollector(leafCtx);
-        // }
+        subAggregators.preCollection();
+        LeafBucketCollector sub;
+        for (int bucketOrd = 0; bucketOrd < optimizeResult.builders.length; bucketOrd++) {
+            logger.debug("Collecting bucket {} for sub aggregation", bucketOrd);
+            DocIdSetBuilder builder = optimizeResult.builders[bucketOrd];
+            if (builder == null) {
+                continue;
+            }
+            DocIdSetIterator iterator = optimizeResult.builders[bucketOrd].build().iterator();
+            // new sub collector for processing each bucket, new collector would have new doc value iterator
+            sub = subAggregators.getLeafCollector(leafCtx);
+            while (iterator.nextDoc() != NO_MORE_DOCS) {
+                int currentDoc = iterator.docID();
+                sub.collect(currentDoc, bucketOrd);
+            }
+        }
+        subAggregators.postCollection();
 
         return true;
     }
