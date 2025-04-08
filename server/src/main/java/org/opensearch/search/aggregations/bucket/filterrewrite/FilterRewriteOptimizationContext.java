@@ -135,12 +135,13 @@ public final class FilterRewriteOptimizationContext {
             return false;
         }
 
-        if (hasSubAgg && this.minSegThreshold > leafCtx.reader().maxDoc()) {
-            return false;
-        }
-
         Ranges ranges = getRanges(leafCtx, segmentMatchAll);
         if (ranges == null) return false;
+
+        if (hasSubAgg && this.minSegThreshold > leafCtx.reader().maxDoc() / ranges.getSize()) {
+            // checking a rough estimate of docs per range in this segment
+            return false;
+        }
 
         Supplier<DocIdSetBuilder> disBuilderSupplier = getDocIdSetBuilderSupplier(leafCtx, values);
         OptimizeResult optimizeResult;
