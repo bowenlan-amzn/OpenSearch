@@ -317,6 +317,15 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         Property.NodeScope
     );
 
+    // only when segment contains this many documents, will apply filter rewrite optimization
+    public static final Setting<Integer> MIN_AGGREGATION_REWRITE_FILTER_SEGMENT_THRESHOLD = Setting.intSetting(
+        "search.min_aggregation_rewrite_filters_segment_threshold",
+        10000,
+        0,
+        Property.Dynamic,
+        Property.NodeScope
+    );
+
     public static final Setting<Integer> INDICES_MAX_CLAUSE_COUNT_SETTING = Setting.intSetting(
         "indices.query.bool.max_clause_count",
         1024,

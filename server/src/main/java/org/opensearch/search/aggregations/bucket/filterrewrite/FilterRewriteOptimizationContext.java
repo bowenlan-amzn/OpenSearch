@@ -55,6 +55,8 @@ public final class FilterRewriteOptimizationContext {
     private final AtomicInteger segments = new AtomicInteger();
     private final AtomicInteger optimizedSegments = new AtomicInteger();
 
+    private int minSegThreshold = 0;
+
     public FilterRewriteOptimizationContext(
         AggregatorBridge aggregatorBridge,
         final Object parent,
@@ -89,6 +91,7 @@ public final class FilterRewriteOptimizationContext {
         }
         logger.debug("Fast filter rewriteable: {} for shard {}", canOptimize, shardId);
 
+        minSegThreshold = context.minAggRewriteFilterSegThreshold();
         return canOptimize;
     }
 
@@ -129,6 +132,10 @@ public final class FilterRewriteOptimizationContext {
                 shardId,
                 leafCtx.ord
             );
+            return false;
+        }
+
+        if (hasSubAgg && this.minSegThreshold > leafCtx.reader().maxDoc()) {
             return false;
         }
 
