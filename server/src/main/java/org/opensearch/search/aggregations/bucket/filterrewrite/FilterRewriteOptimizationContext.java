@@ -146,7 +146,14 @@ public final class FilterRewriteOptimizationContext {
         Supplier<DocIdSetBuilder> disBuilderSupplier = getDocIdSetBuilderSupplier(leafCtx, values);
         OptimizeResult optimizeResult;
         try {
-            optimizeResult = aggregatorBridge.tryOptimize(values, incrementDocCount, ranges, disBuilderSupplier);
+            optimizeResult = aggregatorBridge.tryOptimize(
+                values,
+                incrementDocCount,
+                ranges,
+                disBuilderSupplier,
+                collectableSubAggregators,
+                leafCtx
+            );
             consumeDebugInfo(optimizeResult);
         } catch (AbortFilterRewriteOptimizationException e) {
             logger.error("Abort filter rewrite optimization, fall back to default path");
@@ -156,9 +163,9 @@ public final class FilterRewriteOptimizationContext {
         optimizedSegments.incrementAndGet();
         logger.debug("Fast filter optimization applied to shard {} segment {}", shardId, leafCtx.ord);
         logger.debug("Crossed leaf nodes: {}, inner nodes: {}", leafNodeVisited, innerNodeVisited);
-        if (hasSubAgg) {
-            runSubAggCollections(leafCtx, collectableSubAggregators, optimizeResult.builders);
-        }
+        // if (hasSubAgg) {
+        // runSubAggCollections(leafCtx, collectableSubAggregators, optimizeResult.builders);
+        // }
 
         return true;
     }
