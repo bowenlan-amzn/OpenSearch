@@ -32,7 +32,8 @@ public class SubAggRangeCollector extends AbstractRangeCollector {
 
     private static final Logger logger = LogManager.getLogger(SubAggRangeCollector.class);
 
-    private final DocIdSetBuilder[] docIdSetBuilders;
+    // private final DocIdSetBuilder[] docIdSetBuilders;
+    private DocIdSetBuilder builder = null;
     private final Supplier<DocIdSetBuilder> disBuilderSupplier;
 
     // private final Map<Long, DocIdSetBuilder> bucketOrdinalToDocIdSetBuilder = new HashMap<>();
@@ -55,7 +56,7 @@ public class SubAggRangeCollector extends AbstractRangeCollector {
         LeafReaderContext leafCtx
     ) {
         super(ranges, incrementRangeDocCount, maxNumNonZeroRange, activeIndex, result);
-        this.docIdSetBuilders = new DocIdSetBuilder[ranges.getSize()];
+        // this.docIdSetBuilders = new DocIdSetBuilder[ranges.getSize()];
         this.disBuilderSupplier = disBuilderSupplier;
         this.getBucketOrd = getBucketOrd;
         this.collectableSubAggregators = collectableSubAggregators;
@@ -69,11 +70,15 @@ public class SubAggRangeCollector extends AbstractRangeCollector {
 
     @Override
     public void grow(int count) {
-        if (docIdSetBuilders[activeIndex] == null) {
-            docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+        // if (docIdSetBuilders[activeIndex] == null) {
+        // docIdSetBuilders[activeIndex] = disBuilderSupplier.get();
+        // }
+        if (builder == null) {
+            builder = disBuilderSupplier.get();
         }
         logger.trace("grow docIdSetBuilder[{}] with count {}", activeIndex, count);
-        currentAdder = docIdSetBuilders[activeIndex].grow(count);
+        // currentAdder = docIdSetBuilders[activeIndex].grow(count);
+        currentAdder = builder.grow(count);
         lastGrowCount = count;
     }
 
@@ -95,12 +100,12 @@ public class SubAggRangeCollector extends AbstractRangeCollector {
         }
 
         if (currentAdder != null) {
+            assert builder != null;
             long bucketOrd = getBucketOrd.apply(activeIndex);
             logger.trace("finalize docIdSetBuilder[{}] with bucket ordinal {}", activeIndex, bucketOrd);
             // bucketOrdinalToDocIdSetBuilder.put(bucketOrd, docIdSetBuilders[activeIndex]);
 
             // trigger the sub agg collection
-            DocIdSetBuilder builder = docIdSetBuilders[activeIndex];
             try {
                 DocIdSetIterator iterator = builder.build().iterator();
                 // build a new leaf collector for each bucket
@@ -115,6 +120,7 @@ public class SubAggRangeCollector extends AbstractRangeCollector {
             }
 
             currentAdder = null;
+            builder = null;
         }
     }
 
