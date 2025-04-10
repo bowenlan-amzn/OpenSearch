@@ -143,14 +143,22 @@ public final class FilterRewriteOptimizationContext {
 
         Supplier<DocIdSetBuilder> disBuilderSupplier = getDocIdSetBuilderSupplier(leafCtx, values);
         OptimizeResult optimizeResult;
+        SubAggCollectorParam subAggCollectorParam;
+        if (hasSubAgg) {
+            subAggCollectorParam = new SubAggCollectorParam(
+                disBuilderSupplier,
+                collectableSubAggregators,
+                leafCtx
+            );
+        } else {
+            subAggCollectorParam = null;
+        }
         try {
             optimizeResult = aggregatorBridge.tryOptimize(
                 values,
                 incrementDocCount,
                 ranges,
-                disBuilderSupplier,
-                collectableSubAggregators,
-                leafCtx
+                subAggCollectorParam
             );
             consumeDebugInfo(optimizeResult);
         } catch (AbortFilterRewriteOptimizationException e) {
@@ -164,6 +172,11 @@ public final class FilterRewriteOptimizationContext {
 
         return true;
     }
+
+    public record SubAggCollectorParam(Supplier<DocIdSetBuilder> docIdSetBuilderSupplier,
+                                       BucketCollector collectableSubAggregators, LeafReaderContext leafCtx) {
+    }
+
 
     private Supplier<DocIdSetBuilder> getDocIdSetBuilderSupplier(LeafReaderContext leafCtx, PointValues values) {
         Supplier<DocIdSetBuilder> disBuilderSupplier = null;
