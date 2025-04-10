@@ -104,6 +104,7 @@ public class SubAggRangeCollector extends AbstractRangeCollector {
             try {
                 DocIdSetIterator iterator = builder.build().iterator();
                 // build a new leaf collector for each bucket
+                logger.debug("collect sub aggregation when finalize range {}", bucketOrd); // TODO remove
                 LeafBucketCollector sub = collectableSubAggregators.getLeafCollector(leafCtx);
                 while (iterator.nextDoc() != NO_MORE_DOCS) {
                     int currentDoc = iterator.docID();
