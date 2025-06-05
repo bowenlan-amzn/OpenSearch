@@ -174,6 +174,11 @@ public class ArrowStreamOutput extends StreamOutput {
     }
 
     @Override
+    public void writeBoolean(boolean b) throws IOException {
+        writeLeafValue(new ArrowType.Int(8, true), (TinyIntVector vector, Integer index) -> vector.setSafe(index, b ? 1 : 0));
+    }
+
+    @Override
     public void writeBytes(byte[] b, int offset, int length) throws IOException {
         writeLeafValue(new ArrowType.Binary(), (VarBinaryVector vector, Integer index) -> {
             if (length > 0) {
@@ -202,11 +207,6 @@ public class ArrowStreamOutput extends StreamOutput {
     @Override
     public void writeLong(long v) throws IOException {
         writeLeafValue(new ArrowType.Int(64, true), (BigIntVector vector, Integer index) -> vector.setSafe(index, v));
-    }
-
-    @Override
-    public void writeBoolean(boolean b) throws IOException {
-        writeLeafValue(new ArrowType.Bool(), (BitVector vector, Integer index) -> vector.setSafe(index, b ? 1 : 0));
     }
 
     @Override

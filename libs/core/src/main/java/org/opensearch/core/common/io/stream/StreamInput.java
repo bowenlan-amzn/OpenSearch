@@ -598,7 +598,7 @@ public abstract class StreamInput extends InputStream {
     }
 
     @Nullable
-    public final Boolean readOptionalBoolean() throws IOException {
+    public Boolean readOptionalBoolean() throws IOException {
         final byte value = readByte();
         if (value == 2) {
             return null;

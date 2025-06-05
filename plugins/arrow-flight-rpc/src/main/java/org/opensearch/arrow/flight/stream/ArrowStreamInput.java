@@ -18,6 +18,7 @@ import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.complex.StructVector;
+import org.opensearch.common.Nullable;
 import org.opensearch.core.common.io.stream.NamedWriteable;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -92,6 +93,11 @@ public class ArrowStreamInput extends StreamInput {
     }
 
     @Override
+    public boolean readBoolean() throws IOException {
+        return readPrimitive(TinyIntVector.class, (vector, index) -> vector.get(index) == 1);
+    }
+
+    @Override
     public void readBytes(byte[] b, int offset, int len) throws IOException {
         byte[] data = readPrimitive(VarBinaryVector.class, VarBinaryVector::get);
         if (data.length != len) {
@@ -113,11 +119,6 @@ public class ArrowStreamInput extends StreamInput {
     @Override
     public long readLong() throws IOException {
         return readPrimitive(BigIntVector.class, BigIntVector::get);
-    }
-
-    @Override
-    public boolean readBoolean() throws IOException {
-        return readPrimitive(BitVector.class, (vector, index) -> vector.get(index) == 1);
     }
 
     @Override
