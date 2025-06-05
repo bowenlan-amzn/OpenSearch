@@ -24,6 +24,11 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.StreamTransportService;
 import org.opensearch.transport.client.node.NodeClient;
 
+/**
+ * Transport action used to execute search requests.
+ *
+ * @opensearch.internal
+ */
 public class TransportStreamSearchAction extends TransportSearchAction {
     @Inject
     public TransportStreamSearchAction(
