@@ -30,6 +30,10 @@ import org.opensearch.transport.stream.StreamTransportResponse;
 import java.io.IOException;
 import java.util.function.BiFunction;
 
+/**
+ * This class is responsible for handling the stream search transport service. It extends the SearchTransportService class
+ * and overrides the sendExecuteQuery method to handle the stream search requests.
+ */
 public class StreamSearchTransportService extends SearchTransportService {
     private final StreamTransportService transportService;
 

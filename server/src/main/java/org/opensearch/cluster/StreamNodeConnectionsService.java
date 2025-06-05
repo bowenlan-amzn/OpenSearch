@@ -14,6 +14,11 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.StreamTransportService;
 
+/**
+ * Service for managing node connections
+ *
+ * @opensearch.internal
+ */
 @ExperimentalApi
 public class StreamNodeConnectionsService extends NodeConnectionsService {
     @Inject

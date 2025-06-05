@@ -15,6 +15,9 @@ import org.opensearch.transport.TransportRequest;
 
 import java.io.IOException;
 
+/**
+ * Wraps a listener to a channel and forwards the response to the channel.
+ */
 public class StreamChannelActionListener<Response extends TransportResponse, Request extends TransportRequest>
     implements
         ActionListener<Response> {
