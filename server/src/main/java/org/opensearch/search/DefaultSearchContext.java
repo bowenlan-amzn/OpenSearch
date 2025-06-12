@@ -54,6 +54,7 @@ import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.BigArrays;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.concurrency.OpenSearchRejectedExecutionException;
 import org.opensearch.index.IndexService;
 import org.opensearch.index.IndexSettings;
@@ -1194,5 +1195,16 @@ final class DefaultSearchContext extends SearchContext {
             return clusterService.getClusterSettings().get(KEYWORD_INDEX_OR_DOC_VALUES_ENABLED);
         }
         return false;
+    }
+
+    ActionListener listener;
+    @Override
+    public void setListener(ActionListener listener) {
+        this.listener = listener;
+    }
+
+    @Override
+    public ActionListener getListener() {
+        return listener;
     }
 }

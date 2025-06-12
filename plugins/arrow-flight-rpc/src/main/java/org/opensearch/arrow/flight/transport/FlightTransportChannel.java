@@ -65,6 +65,7 @@ public class FlightTransportChannel extends TcpTransportChannel {
         if (response instanceof QuerySearchResult && ((QuerySearchResult) response).getShardSearchRequest() != null) {
             ((QuerySearchResult) response).getShardSearchRequest().setOutboundNetworkTime(System.currentTimeMillis());
         }
+        logger.info("send stream response");
         ((FlightOutboundHandler) outboundHandler).sendResponseBatch(
             version,
             features,
@@ -84,6 +85,7 @@ public class FlightTransportChannel extends TcpTransportChannel {
     @Override
     public void completeStream() {
         if (streamOpen.compareAndSet(true, false)) {
+            logger.info("complete stream");
             ((FlightOutboundHandler) outboundHandler).completeStream(
                 version,
                 features,

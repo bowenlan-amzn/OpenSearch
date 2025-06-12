@@ -74,6 +74,10 @@ public abstract class ActionRunnable<Response> extends AbstractRunnable {
         return ActionRunnable.wrap(listener, l -> l.onResponse(supplier.get()));
     }
 
+    public static <T> ActionRunnable<T> supplyComplete(ActionListener<T> listener, CheckedSupplier<T, Exception> supplier) {
+        return ActionRunnable.wrap(listener, l -> l.onCompleteResponse(supplier.get()));
+    }
+
     /**
      * Creates a {@link Runnable} that wraps the given listener and a consumer of it that is executed when the {@link Runnable} is run.
      * Invokes {@link ActionListener#onFailure(Exception)} on it if an exception is thrown on executing the consumer.
