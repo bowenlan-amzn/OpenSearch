@@ -158,9 +158,4 @@ public class NodeClient extends AbstractClient {
     public NamedWriteableRegistry getNamedWriteableRegistry() {
         return namedWriteableRegistry;
     }
-
-    @Override
-    public SearchRequestBuilder prepareStreamSearch(String... indices) {
-        throw new UnsupportedOperationException("Stream search is not supported in NodeClient");
-    }
 }

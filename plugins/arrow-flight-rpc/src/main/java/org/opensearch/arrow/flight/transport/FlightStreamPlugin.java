@@ -130,7 +130,8 @@ public class FlightStreamPlugin extends Plugin
         flightService.setClusterService(clusterService);
         flightService.setThreadPool(threadPool);
         flightService.setClient(client);
-        return Collections.emptyList();
+        // return Collections.emptyList();
+        return Collections.singletonList(flightService);
     }
 
     /**

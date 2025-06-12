@@ -35,6 +35,9 @@ package org.opensearch.action.search;
 import org.opensearch.common.util.concurrent.AtomicArray;
 import org.opensearch.search.SearchPhaseResult;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
@@ -44,10 +47,13 @@ import java.util.stream.Stream;
  */
 class ArraySearchPhaseResults<Result extends SearchPhaseResult> extends SearchPhaseResults<Result> {
     final AtomicArray<Result> results;
+    private final AtomicInteger streamCounters = new AtomicInteger(0);
+    private static final int MAX_BATCHES_PER_SHARD = 100;
 
     ArraySearchPhaseResults(int size) {
         super(size);
-        this.results = new AtomicArray<>(size);
+        // Size the results array to accommodate multiple results per shard
+        this.results = new AtomicArray<>(size * MAX_BATCHES_PER_SHARD);
     }
 
     Stream<Result> getSuccessfulResults() {
@@ -56,8 +62,15 @@ class ArraySearchPhaseResults<Result extends SearchPhaseResult> extends SearchPh
 
     @Override
     void consumeResult(Result result, Runnable next) {
-        assert results.get(result.getShardIndex()) == null : "shardIndex: " + result.getShardIndex() + " is already set";
-        results.set(result.getShardIndex(), result);
+        // Check if this is a streaming result that should get a batch ID
+        if (result.getStreamBatchId() == 0) {
+            final int batchId = streamCounters.incrementAndGet();
+            result.setStreamBatchId(batchId);
+            // Store the result at the batch id
+            assert results.get(batchId) == null : "Slot [" + batchId + "] has already been consumed";
+            results.set(batchId, result);
+        }
+
         next.run();
     }
 

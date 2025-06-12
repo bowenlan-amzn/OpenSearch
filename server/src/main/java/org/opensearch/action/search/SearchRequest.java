@@ -124,6 +124,8 @@ public class SearchRequest extends ActionRequest implements IndicesRequest.Repla
     private String pipeline;
 
     private Boolean phaseTook = null;
+    
+    private boolean streamSearch = true;
 
     public SearchRequest() {
         this.localClusterAlias = null;
@@ -711,6 +713,20 @@ public class SearchRequest extends ActionRequest implements IndicesRequest.Repla
 
     public String pipeline() {
         return pipeline;
+    }
+    
+    /**
+     * Returns whether this search request is a stream search
+     */
+    public boolean isStreamSearch() {
+        return streamSearch;
+    }
+    
+    /**
+     * Sets whether this search request is a stream search
+     */
+    public void setStreamSearch(boolean streamSearch) {
+        this.streamSearch = streamSearch;
     }
 
     @Override
