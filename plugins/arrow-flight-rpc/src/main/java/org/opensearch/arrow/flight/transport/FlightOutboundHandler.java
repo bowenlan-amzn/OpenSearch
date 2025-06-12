@@ -123,11 +123,20 @@ public class FlightOutboundHandler extends ProtocolOutboundHandler {
                 headerBuffer = ByteBuffer.wrap(headerBytes.toBytesRef().bytes);
             }
 
-            try (ArrowStreamOutput out = new ArrowStreamOutput(flightChannel.getAllocator())) {
+            //  serialize response still to stream output, not arrow stream output
+            //  refer to existing logic in
+            //  NativeOutboundHandler sendResponse, MessageSerializer get, NativeOutboundMessage writeMessage
+            //  TODO bigarrays and ReleasableBytesStreamOutput are used there
+            try (BytesStreamOutput out = new BytesStreamOutput()) {
                 response.writeTo(out);
-                flightChannel.sendBatch(headerBuffer, out, listener);
+                flightChannel.sendBatch(headerBuffer, out.bytes(), listener);
                 messageListener.onResponseSent(requestId, action, response);
             }
+            // try (ArrowStreamOutput out = new ArrowStreamOutput(flightChannel.getAllocator())) {
+            //     response.writeTo(out);
+            //     flightChannel.sendBatch(headerBuffer, out, listener);
+            //     messageListener.onResponseSent(requestId, action, response);
+            // }
         } catch (Exception e) {
             listener.onFailure(new TransportException("Failed to send response batch for action [" + action + "]", e));
             messageListener.onResponseSent(requestId, action, e);

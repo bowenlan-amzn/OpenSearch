@@ -11,10 +11,17 @@ package org.opensearch.arrow.flight.transport;
 import org.apache.arrow.flight.FlightClient;
 import org.apache.arrow.flight.FlightStream;
 import org.apache.arrow.flight.Ticket;
+import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.arrow.flight.stream.ArrowStreamInput;
 import org.opensearch.common.annotation.ExperimentalApi;
+import org.opensearch.core.common.bytes.BytesArray;
+import org.opensearch.core.common.bytes.BytesReference;
+import org.opensearch.core.common.io.stream.NamedWriteableAwareStreamInput;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
+import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.transport.TransportResponse;
 import org.opensearch.transport.Header;
 import org.opensearch.transport.TransportException;
@@ -31,6 +38,7 @@ import java.util.Objects;
  */
 @ExperimentalApi
 public class FlightTransportResponse<T extends TransportResponse> implements StreamTransportResponse<T> {
+    final Logger logger = LogManager.getLogger(FlightTransportResponse.class);
     private final FlightStream flightStream;
     private final NamedWriteableRegistry namedWriteableRegistry;
     private final HeaderContext headerContext;
@@ -175,11 +183,26 @@ public class FlightTransportResponse<T extends TransportResponse> implements Str
         if (root.getRowCount() == 0) {
             throw new IllegalStateException("Empty response received");
         }
-        try (ArrowStreamInput input = new ArrowStreamInput(root, namedWriteableRegistry)) {
-            return handler.read(input);
+
+        VarBinaryVector v = (VarBinaryVector) root.getVector("payload");
+        int len  = v.getValueLength(0);
+        int off  = v.getStartOffset(0);
+        byte[] b = new byte[len];
+        v.getDataBuffer().getBytes(off, b, 0, len);   // copy out
+        BytesReference ref = new BytesArray(b);
+        // refer to: InboundMessage streamInput, NativeMessageHandler namedWriteableStream
+        try (StreamInput in = ref.streamInput()) {
+            StreamInput namedWriteableAwareStreamInput = new NamedWriteableAwareStreamInput(in, namedWriteableRegistry);
+            return handler.read(namedWriteableAwareStreamInput);
         } catch (IOException e) {
-            throw new TransportException("Failed to deserialize response", e);
+            throw new RuntimeException(e);
         }
+
+        // try (ArrowStreamInput input = new ArrowStreamInput(root, namedWriteableRegistry)) {
+        //     return handler.read(input);
+        // } catch (IOException e) {
+        //     throw new TransportException("Failed to deserialize response", e);
+        // }
     }
 
     /**

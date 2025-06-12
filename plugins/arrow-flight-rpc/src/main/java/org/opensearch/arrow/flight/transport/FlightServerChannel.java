@@ -12,6 +12,7 @@ import org.apache.arrow.flight.CallStatus;
 import org.apache.arrow.flight.FlightProducer;
 import org.apache.arrow.flight.FlightProducer.ServerStreamListener;
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -49,6 +50,7 @@ public class FlightServerChannel implements TcpChannel {
     private final List<ActionListener<Void>> closeListeners = Collections.synchronizedList(new ArrayList<>());
     private final ServerHeaderMiddleware middleware;
     private final SetOnce<VectorSchemaRoot> root = new SetOnce<>();
+    private final SetOnce<VarBinaryVector> vector = new SetOnce<>();
 
     public FlightServerChannel(ServerStreamListener serverStreamListener, BufferAllocator allocator, FlightProducer.CallContext context, ServerHeaderMiddleware middleware) {
         this.serverStreamListener = serverStreamListener;
@@ -95,6 +97,46 @@ public class FlightServerChannel implements TcpChannel {
         }
     }
 
+    public void sendBatch(ByteBuffer header, BytesReference response, ActionListener<Void> completionListener) {
+        if (!open.get()) {
+            throw new IllegalStateException("FlightServerChannel already closed.");
+        }
+        try {
+            if (!serverStreamListener.isReady()) {
+                completionListener.onFailure(new IOException("Client is not ready for batch"));
+                return;
+            }
+            middleware.setHeader(header);
+
+            // Only set for the first batch
+            if (root.get() == null) {
+                VarBinaryVector v = new VarBinaryVector("payload", allocator);
+                VectorSchemaRoot payloadRoot = new VectorSchemaRoot(Collections.singletonList(v));
+                // payloadRoot.allocateNew();
+
+                root.trySet(payloadRoot);
+                vector.trySet(v);
+
+                serverStreamListener.start(root.get());
+            }
+
+            byte[] b = BytesReference.toBytes(response);
+            vector.get().setSafe(0, b, 0, b.length);
+            root.get().setRowCount(1);
+
+            // we do not want to close the root right after putNext() call as we do not know the status of it whether
+            // its transmitted at transport;  we close them all at complete stream. TODO: optimize this behaviour
+            serverStreamListener.putNext();
+            completionListener.onResponse(null);
+        } catch (Exception e) {
+            logger.error("failed to send batch", e);
+            completionListener.onFailure(new IOException("Failed to send batch", e));
+        } finally {
+            root.get().clear();
+            // root.get().allocateNew();
+        }
+    }
+
     /**
      * Completes the streaming response and closes all pending roots.
      *
@@ -116,7 +158,7 @@ public class FlightServerChannel implements TcpChannel {
      * @param completionListener callback for completion or failure
      */
     public void sendError(ByteBuffer header, Exception error, ActionListener<Void> completionListener) {
-        if (!open.compareAndSet(true, false)) {
+        if (!open.get()) {
             throw new IllegalStateException("FlightServerChannel already closed.");
         }
         try {
@@ -130,6 +172,7 @@ public class FlightServerChannel implements TcpChannel {
             logger.error(error);
             completionListener.onFailure(error);
         } catch (Exception e) {
+            logger.error("failed to send error", e);
             completionListener.onFailure(new IOException("Failed to send error", e));
         } finally {
             if (root.get() != null) {
