@@ -11,6 +11,7 @@ package org.opensearch.action.support;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.action.StreamActionListener;
 import org.opensearch.core.transport.TransportResponse;
 import org.opensearch.transport.TransportChannel;
 import org.opensearch.transport.TransportRequest;
@@ -22,7 +23,7 @@ import java.io.IOException;
  */
 public class StreamChannelActionListener<Response extends TransportResponse, Request extends TransportRequest>
     implements
-        ActionListener<Response> {
+    StreamActionListener<Response> {
     private final Logger logger = LogManager.getLogger(StreamChannelActionListener.class);
 
     private final TransportChannel channel;
@@ -36,18 +37,11 @@ public class StreamChannelActionListener<Response extends TransportResponse, Req
     }
 
     @Override
-    public void onResponse(Response response) {
+    public void onStreamResponse(Response response, StreamState state, int batchId) {
         channel.sendResponseBatch(response);
-    }
 
-    @Override
-    public void onCompleteResponse(Response response) {
-        logger.info("onCompleteResponse");
-        try {
-            // placeholder for batching
-            channel.sendResponseBatch(response);
-        } finally {
-            // this can be removed once batching is supported
+        // Complete the stream if this is the final response
+        if (state == StreamState.COMPLETED) {
             channel.completeStream();
         }
     }

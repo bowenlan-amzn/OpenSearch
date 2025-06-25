@@ -54,7 +54,7 @@ import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.BigArrays;
-import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.action.StreamActionListener;
 import org.opensearch.core.concurrency.OpenSearchRejectedExecutionException;
 import org.opensearch.index.IndexService;
 import org.opensearch.index.IndexSettings;
@@ -1197,14 +1197,14 @@ final class DefaultSearchContext extends SearchContext {
         return false;
     }
 
-    ActionListener listener;
+    StreamActionListener listener;
     @Override
-    public void setListener(ActionListener listener) {
+    public void setListener(StreamActionListener listener) {
         this.listener = listener;
     }
 
     @Override
-    public ActionListener getListener() {
+    public StreamActionListener getListener() {
         return listener;
     }
 }

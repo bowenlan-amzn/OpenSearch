@@ -37,6 +37,7 @@ import org.opensearch.common.CheckedRunnable;
 import org.opensearch.common.CheckedSupplier;
 import org.opensearch.common.util.concurrent.AbstractRunnable;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.action.StreamActionListener;
 
 /**
  * Base class for {@link Runnable}s that need to call {@link ActionListener#onFailure(Exception)} in case an uncaught
@@ -74,8 +75,8 @@ public abstract class ActionRunnable<Response> extends AbstractRunnable {
         return ActionRunnable.wrap(listener, l -> l.onResponse(supplier.get()));
     }
 
-    public static <T> ActionRunnable<T> supplyComplete(ActionListener<T> listener, CheckedSupplier<T, Exception> supplier) {
-        return ActionRunnable.wrap(listener, l -> l.onCompleteResponse(supplier.get()));
+    public static <T> ActionRunnable<T> supplyStream(StreamActionListener<T> listener, CheckedSupplier<T, Exception> supplier) {
+        return ActionRunnable.wrapStream(listener, l -> l.onStreamResponse(supplier.get(), StreamActionListener.StreamState.COMPLETED, 0));
     }
 
     /**
@@ -91,6 +92,15 @@ public abstract class ActionRunnable<Response> extends AbstractRunnable {
             @Override
             protected void doRun() throws Exception {
                 consumer.accept(listener);
+            }
+        };
+    }
+
+    public static <T> ActionRunnable<T> wrapStream(StreamActionListener<T> l, CheckedConsumer<StreamActionListener<T>, Exception> consumer) {
+        return new ActionRunnable<T>(l) {
+            @Override
+            protected void doRun() throws Exception {
+                consumer.accept(l);
             }
         };
     }
