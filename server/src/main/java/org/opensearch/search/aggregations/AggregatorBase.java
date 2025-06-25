@@ -35,13 +35,21 @@ import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreMode;
+import org.opensearch.common.lucene.Lucene;
+import org.opensearch.common.lucene.search.TopDocsAndMaxScore;
+import org.opensearch.core.action.StreamActionListener;
 import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.core.common.breaker.CircuitBreakingException;
 import org.opensearch.core.indices.breaker.CircuitBreakerService;
+import org.opensearch.search.DocValueFormat;
+import org.opensearch.search.SearchHits;
 import org.opensearch.search.SearchShardTarget;
 import org.opensearch.search.aggregations.support.ValuesSourceConfig;
+import org.opensearch.search.fetch.FetchSearchResult;
+import org.opensearch.search.fetch.QueryFetchSearchResult;
 import org.opensearch.search.internal.SearchContext;
 import org.opensearch.search.query.QueryPhaseExecutionException;
+import org.opensearch.search.query.QuerySearchResult;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -296,6 +304,32 @@ public abstract class AggregatorBase extends Aggregator {
         // post-collect this agg before subs to make it possible to buffer and then replay in postCollection()
         doPostCollection();
         collectableSubAggregators.postCollection();
+    }
+
+    @Override
+    public void reset() {
+        doReset();
+        collectableSubAggregators.reset();
+    }
+
+    protected void doReset() {}
+
+    @Override
+    public void sendBatch(InternalAggregation batch, int streamBatchId) {
+        InternalAggregations batchAggResult = new InternalAggregations(List.of(batch));
+
+        final QuerySearchResult queryResult = context.queryResult();
+        queryResult.aggregations(batchAggResult);
+        // set a dummy topdocs
+        queryResult.topDocs(new TopDocsAndMaxScore(Lucene.EMPTY_TOP_DOCS, Float.NaN), new DocValueFormat[0]);
+        // set a dummy fetch
+        final FetchSearchResult fetchResult = context.fetchResult();
+        fetchResult.hits(SearchHits.empty());
+        final QueryFetchSearchResult result = new QueryFetchSearchResult(queryResult, fetchResult);
+        // flush back
+        result.setStreamBatchId(streamBatchId);
+        context.getListener().onStreamResponse(result, StreamActionListener.StreamState.IN_PROGRESS, streamBatchId);
+        queryResult.aggregations(null);
     }
 
     /** Called upon release of the aggregator. */

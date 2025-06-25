@@ -516,4 +516,7 @@ public abstract class BucketsAggregator extends AggregatorBase {
         return false;
     }
 
+    public void doReset() {
+        docCounts.fill(0, docCounts.size(), 0);
+    }
 }

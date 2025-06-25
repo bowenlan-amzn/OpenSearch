@@ -68,6 +68,7 @@ import org.opensearch.common.util.concurrent.ConcurrentCollections;
 import org.opensearch.common.util.concurrent.ConcurrentMapLong;
 import org.opensearch.common.util.io.IOUtils;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.action.StreamActionListener;
 import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
@@ -703,7 +704,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         ShardSearchRequest request,
         boolean keepStatesInContext,
         SearchShardTask task,
-        ActionListener<SearchPhaseResult> listener
+        StreamActionListener<SearchPhaseResult> listener
     ) {
         assert request.canReturnNullResponseIfMatchNoDocs() == false || request.numberOfShards() > 1
             : "empty responses require more than one shard";
@@ -728,7 +729,7 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
                     }
                 }
                 // fork the execution in the search thread pool
-                runAsyncComplete(getExecutor(shard), () -> executeQueryPhase(orig, task, keepStatesInContext, listener), listener);
+                runAsyncStream(getExecutor(shard), () -> executeQueryPhase(orig, task, keepStatesInContext, listener), listener);
             }
 
             @Override
@@ -744,7 +745,8 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
             Releasable ignored = readerContext.markAsUsed(getKeepAlive(request));
             SearchContext context = createContext(readerContext, request, task, true)
         ) {
-            context.setListener(listener);
+            assert listener instanceof StreamActionListener;
+            context.setListener((StreamActionListener) listener);
             final long afterQueryTime;
             try (SearchOperationListenerExecutor executor = new SearchOperationListenerExecutor(context)) {
                 loadOrExecuteQueryPhase(request, context);
@@ -779,8 +781,8 @@ public class SearchService extends AbstractLifecycleComponent implements IndexEv
         }
     }
 
-    private <T> void runAsyncComplete(Executor executor, CheckedSupplier<T, Exception> executable, ActionListener<T> listener) {
-        executor.execute(ActionRunnable.supplyComplete(listener, executable::get));
+    private <T> void runAsyncStream(Executor executor, CheckedSupplier<T, Exception> executable, StreamActionListener<T> listener) {
+        executor.execute(ActionRunnable.supplyStream(listener, executable::get));
     }
 
     private IndexShard getShard(ShardSearchRequest request) {

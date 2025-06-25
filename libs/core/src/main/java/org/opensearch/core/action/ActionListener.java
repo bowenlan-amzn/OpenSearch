@@ -58,15 +58,6 @@ public interface ActionListener<Response> {
     void onResponse(Response response);
 
     /**
-     * This method is only for streaming transport
-     * Handle the last response and implicitly handle the complete signal
-     * The middle response batches are handled by {@link #onResponse(Response)}
-     */
-    default void onCompleteResponse(Response response) {
-        onResponse(response);
-    }
-
-    /**
      * A failure caused by an exception at some phase of the task.
      */
     void onFailure(Exception e);
