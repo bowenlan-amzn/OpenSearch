@@ -59,8 +59,8 @@ public class FlightTransportIT extends OpenSearchIntegTestCase {
         internalCluster().ensureAtLeastNumDataNodes(3);
 
         Settings indexSettings = Settings.builder()
-            .put("index.number_of_shards", 1)    // Number of primary shards
-            .put("index.number_of_replicas", 0)  // Number of replica shards
+            .put("index.number_of_shards", 10)    // Number of primary shards
+            .put("index.number_of_replicas", 1)  // Number of replica shards
             .put("index.search.concurrent_segment_search.mode", "none")
             .build();
 
