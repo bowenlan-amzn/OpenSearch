@@ -16,29 +16,46 @@ import org.opensearch.search.SearchShardTarget;
  * A specialized StreamActionListener for search operations that tracks shard targets and indices.
  */
 abstract class SearchStreamActionListener<T extends SearchPhaseResult> extends SearchActionListener<T> implements StreamActionListener<T> {
+
     protected SearchStreamActionListener(SearchShardTarget searchShardTarget, int shardIndex) {
         super(searchShardTarget, shardIndex);
     }
-    
+
     /**
-     * Handle response with stream state and batch id
+     * Handle intermediate streaming response
      */
     @Override
-    public void onStreamResponse(T response, StreamState state, int batchId) {
-        // Set batch ID on the response if applicable
+    public void onStreamResponse(T response) {
         if (response != null) {
-            response.setStreamBatchId(batchId);
             response.setShardIndex(requestIndex);
             setSearchShardTarget(response);
-            
-            // Process response based on stream state
-            processStreamResponse(response, state, batchId);
+
+            innerOnStreamResponse(response);
         }
     }
     
     /**
-     * Process streamed responses based on their state
-     * Implementations should override this method to handle different states
+     * Handle final streaming response that completes the stream
      */
-    protected abstract void processStreamResponse(T response, StreamState state, int batchId);
+    @Override
+    public void onCompleteResponse(T response) {
+        if (response != null) {
+            response.setShardIndex(requestIndex);
+            setSearchShardTarget(response);
+            
+            innerOnCompleteResponse(response);
+        }
+    }
+
+    /**
+     * Process intermediate streaming responses.
+     * Implementations should override this method to handle the response.
+     */
+    protected abstract void innerOnStreamResponse(T response);
+    
+    /**
+     * Process the final response and complete the stream.
+     * Implementations should override this method to handle the final response.
+     */
+    protected abstract void innerOnCompleteResponse(T response);
 }

@@ -10,7 +10,6 @@ package org.opensearch.action.support;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.StreamActionListener;
 import org.opensearch.core.transport.TransportResponse;
 import org.opensearch.transport.TransportChannel;
@@ -22,8 +21,7 @@ import java.io.IOException;
  * Wraps a listener to a channel and forwards the response to the channel.
  */
 public class StreamChannelActionListener<Response extends TransportResponse, Request extends TransportRequest>
-    implements
-    StreamActionListener<Response> {
+    implements StreamActionListener<Response> {
     private final Logger logger = LogManager.getLogger(StreamChannelActionListener.class);
 
     private final TransportChannel channel;
@@ -37,13 +35,21 @@ public class StreamChannelActionListener<Response extends TransportResponse, Req
     }
 
     @Override
-    public void onStreamResponse(Response response, StreamState state, int batchId) {
-        channel.sendResponseBatch(response);
-
-        // Complete the stream if this is the final response
-        if (state == StreamState.COMPLETED) {
-            channel.completeStream();
+    public void onStreamResponse(Response response) {
+        if (response != null) {
+            channel.sendResponseBatch(response);
+            logger.debug("Sent intermediate response batch");
         }
+    }
+
+    @Override
+    public void onCompleteResponse(Response response) {
+        if (response != null) {
+            channel.sendResponseBatch(response);
+        }
+
+        channel.completeStream();
+        logger.info("Sent final response and completed stream");
     }
 
     @Override
