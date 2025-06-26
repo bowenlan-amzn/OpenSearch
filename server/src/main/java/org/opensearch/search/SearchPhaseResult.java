@@ -94,7 +94,7 @@ public abstract class SearchPhaseResult extends TransportResponse {
      */
     public int getShardIndex() {
         assert shardIndex != -1 : "shardIndex is not set";
-        return shardIndex + streamBatchId;
+        return shardIndex;
     }
 
     public void setShardIndex(int shardIndex) {

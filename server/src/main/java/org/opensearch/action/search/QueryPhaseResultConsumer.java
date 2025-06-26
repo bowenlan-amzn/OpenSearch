@@ -128,7 +128,7 @@ public class QueryPhaseResultConsumer extends ArraySearchPhaseResults<SearchPhas
     public void consumeResult(SearchPhaseResult result, Runnable next) {
         super.consumeResult(result, () -> {});
         QuerySearchResult querySearchResult = result.queryResult();
-        progressListener.notifyQueryResult(querySearchResult.getShardIndex());
+        progressListener.notifyQueryResult(querySearchResult.getShardIndex()); // TODO bowen since one shard will have multiple results, this will notify multiple times
         pendingMerges.consume(querySearchResult, next);
     }
 
