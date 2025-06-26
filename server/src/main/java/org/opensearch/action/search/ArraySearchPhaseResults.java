@@ -47,9 +47,7 @@ import java.util.stream.Stream;
  */
 class ArraySearchPhaseResults<Result extends SearchPhaseResult> extends SearchPhaseResults<Result> {
     final AtomicArray<Result> results;
-    // Map to track the stream batch counter for each shard index
-    private final Map<Integer, AtomicInteger> shardStreamCounters = new ConcurrentHashMap<>();
-    // Maximum number of streaming batches per shard we expect to handle
+    private final AtomicInteger streamCounters = new AtomicInteger(0);
     private static final int MAX_BATCHES_PER_SHARD = 100;
 
     ArraySearchPhaseResults(int size) {
@@ -64,22 +62,14 @@ class ArraySearchPhaseResults<Result extends SearchPhaseResult> extends SearchPh
 
     @Override
     void consumeResult(Result result, Runnable next) {
-        int shardIndex = result.getShardIndex();
         // Check if this is a streaming result that should get a batch ID
         if (result.getStreamBatchId() == 0) {
-            // Get the original shard index without batch ID
-            int originalShardIndex = result.getShardIndex();
-            // Get or initialize counter for this shard
-            AtomicInteger counter = shardStreamCounters.computeIfAbsent(originalShardIndex, k -> new AtomicInteger(0));
-            // Set batch ID and increment counter for next batch
-            int batchId = counter.getAndIncrement();
+            final int batchId = streamCounters.incrementAndGet();
             result.setStreamBatchId(batchId);
-            // Update shardIndex to account for the batch ID
-            shardIndex = result.getShardIndex();
+            // Store the result at the batch id
+            results.set(batchId, result);
         }
-        
-        // Store the result at the computed index
-        results.set(shardIndex, result);
+
         next.run();
     }
 
