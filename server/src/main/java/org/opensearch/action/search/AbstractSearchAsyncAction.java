@@ -296,12 +296,33 @@ abstract class AbstractSearchAsyncAction<Result extends SearchPhaseResult> exten
                 final Thread thread = Thread.currentThread();
                 try {
                     final SearchPhase phase = this;
-                    executePhaseOnShard(shardIt, shard, new SearchActionListener<Result>(shard, shardIndex) {
+                    // TODO bowen: refactor this part of logic so it can be pluggable for native or streaming
+                    executePhaseOnShard(shardIt, shard, new SearchStreamActionListener<Result>(shard, shardIndex) {
                         @Override
                         public void innerOnResponse(Result result) {
+                            throw new RuntimeException("innerOnResponse is not used for stream search");
+                        }
+
+                        @Override
+                        protected void innerOnStreamResponse(Result result) {
                             try {
-                                onShardResult(result, shardIt);
+                                onStreamShardResult(result, shardIt, () -> {});
                             } finally {
+                                // For intermediate results, we don't complete the shard execution
+                                logger.debug("Processed intermediate result from shard {}", shardIndex);
+                            }
+                        }
+
+                        @Override
+                        protected void innerOnCompleteResponse(Result result) {
+                            try {
+                                onStreamShardResult(result, shardIt, () -> {
+                                    // This is the final response, so consume the shard result
+                                    onShardResultConsumed(result, shardIt);
+                                });
+                            } finally {
+                                // This is the final response, so move to the next shard
+                                logger.debug("Completed stream for shard {}, moving to next", shardIndex);
                                 executeNext(pendingExecutions, thread);
                             }
                         }
@@ -626,6 +647,17 @@ abstract class AbstractSearchAsyncAction<Result extends SearchPhaseResult> exten
         }
         this.setPhaseResourceUsages();
         results.consumeResult(result, () -> onShardResultConsumed(result, shardIt));
+    }
+
+    protected void onStreamShardResult(Result result, SearchShardIterator shardIt, Runnable next) {
+        assert result.getShardIndex() != -1 : "shard index is not set";
+        assert result.getSearchShardTarget() != null : "search shard target must not be null";
+        hasShardResponse.set(true);
+        if (logger.isTraceEnabled()) {
+            logger.trace("got streaming result from {}", result != null ? result.getSearchShardTarget() : null);
+        }
+        this.setPhaseResourceUsages();
+        results.consumeResult(result, next);
     }
 
     public void setPhaseResourceUsages() {

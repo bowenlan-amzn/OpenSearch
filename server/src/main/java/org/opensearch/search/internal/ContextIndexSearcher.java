@@ -386,7 +386,7 @@ public class ContextIndexSearcher extends IndexSearcher implements Releasable {
             }
         }
 
-        searchContext.bucketCollectorProcessor().buildAggBatchAndSend(collector, ctx.ord+1);
+        searchContext.bucketCollectorProcessor().buildAggBatchAndSend(collector);
         // Note: this is called if collection ran successfully, including the above special cases of
         // CollectionTerminatedException and TimeExceededException, but no other exception.
         leafCollector.finish();

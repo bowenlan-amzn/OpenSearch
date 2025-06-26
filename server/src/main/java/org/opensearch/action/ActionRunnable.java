@@ -76,7 +76,7 @@ public abstract class ActionRunnable<Response> extends AbstractRunnable {
     }
 
     public static <T> ActionRunnable<T> supplyStream(StreamActionListener<T> listener, CheckedSupplier<T, Exception> supplier) {
-        return ActionRunnable.wrapStream(listener, l -> l.onStreamResponse(supplier.get(), StreamActionListener.StreamState.COMPLETED, 0));
+        return ActionRunnable.wrapStream(listener, l -> l.onCompleteResponse(supplier.get()));
     }
 
     /**

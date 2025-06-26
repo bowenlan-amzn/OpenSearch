@@ -63,6 +63,14 @@ public abstract class SearchPhaseResult extends TransportResponse {
     private ShardSearchRequest shardSearchRequest;
     private RescoreDocIds rescoreDocIds = RescoreDocIds.EMPTY;
 
+    private int streamBatchId = 0;
+    public int getStreamBatchId() {
+        return streamBatchId;
+    }
+    public void setStreamBatchId(int streamBatchId) {
+        this.streamBatchId = streamBatchId;
+    }
+
     protected SearchPhaseResult() {
 
     }
@@ -86,7 +94,12 @@ public abstract class SearchPhaseResult extends TransportResponse {
      */
     public int getShardIndex() {
         assert shardIndex != -1 : "shardIndex is not set";
-        return shardIndex;
+        return shardIndex + streamBatchId;
+    }
+
+    public void setShardIndex(int shardIndex) {
+        assert shardIndex >= 0 : "shardIndex must be >= 0 but was: " + shardIndex;
+        this.shardIndex = shardIndex;
     }
 
     public SearchShardTarget getSearchShardTarget() {
@@ -95,11 +108,6 @@ public abstract class SearchPhaseResult extends TransportResponse {
 
     public void setSearchShardTarget(SearchShardTarget shardTarget) {
         this.searchShardTarget = shardTarget;
-    }
-
-    public void setShardIndex(int shardIndex) {
-        assert shardIndex >= 0 : "shardIndex must be >= 0 but was: " + shardIndex;
-        this.shardIndex = shardIndex;
     }
 
     /**

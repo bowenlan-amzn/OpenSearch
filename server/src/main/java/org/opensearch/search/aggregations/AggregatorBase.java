@@ -37,7 +37,6 @@ import org.apache.lucene.search.MatchAllDocsQuery;
 import org.apache.lucene.search.ScoreMode;
 import org.opensearch.common.lucene.Lucene;
 import org.opensearch.common.lucene.search.TopDocsAndMaxScore;
-import org.opensearch.core.action.StreamActionListener;
 import org.opensearch.core.common.breaker.CircuitBreaker;
 import org.opensearch.core.common.breaker.CircuitBreakingException;
 import org.opensearch.core.indices.breaker.CircuitBreakerService;
@@ -315,7 +314,7 @@ public abstract class AggregatorBase extends Aggregator {
     protected void doReset() {}
 
     @Override
-    public void sendBatch(InternalAggregation batch, int streamBatchId) {
+    public void sendBatch(InternalAggregation batch) {
         InternalAggregations batchAggResult = new InternalAggregations(List.of(batch));
 
         final QuerySearchResult queryResult = context.queryResult();
@@ -327,8 +326,7 @@ public abstract class AggregatorBase extends Aggregator {
         fetchResult.hits(SearchHits.empty());
         final QueryFetchSearchResult result = new QueryFetchSearchResult(queryResult, fetchResult);
         // flush back
-        result.setStreamBatchId(streamBatchId);
-        context.getListener().onStreamResponse(result, StreamActionListener.StreamState.IN_PROGRESS, streamBatchId);
+        context.getListener().onStreamResponse(result);
         queryResult.aggregations(null);
     }
 

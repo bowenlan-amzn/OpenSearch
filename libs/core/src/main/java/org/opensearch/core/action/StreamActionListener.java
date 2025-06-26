@@ -17,40 +17,28 @@ import org.opensearch.common.annotation.ExperimentalApi;
  */
 @ExperimentalApi
 public interface StreamActionListener<Response> extends ActionListener<Response> {
-
     /**
-     * Stream state for handling partial results
+     * Handle an intermediate streaming response. This is called for all responses
+     * that are not the final response in the stream.
+     * 
+     * @param response An intermediate response in the stream
      */
-    enum StreamState {
-        /**
-         * First batch in stream
-         */
-        STARTED,
-
-        /**
-         * Middle batch in stream
-         */
-        IN_PROGRESS,
-
-        /**
-         * Final batch in stream
-         */
-        COMPLETED
-    }
-
+    void onStreamResponse(Response response);
+    
     /**
-     * Handle a response with stream state
-     * @param response The response data
-     * @param state The current stream state
-     * @param batchId The batch identifier (incremented for each batch)
+     * Handle the final response in the stream and complete the stream.
+     * This is called exactly once when the stream is complete.
+     * 
+     * @param response The final response in the stream
      */
-    void onStreamResponse(Response response, StreamState state, int batchId);
+    void onCompleteResponse(Response response);
 
     /**
-     * Support for non-streaming responses, delegates to onStreamResponse with COMPLETED state
+     * Not supported for streaming listeners. Use onStreamResponse or onCompleteResponse instead.
+     * @throws UnsupportedOperationException always
      */
     @Override
     default void onResponse(Response response) {
-        onStreamResponse(response, StreamState.COMPLETED, 0);
+        throw new UnsupportedOperationException("StreamActionListener does not support onResponse. Use onStreamResponse or onCompleteResponse instead.");
     }
 }
