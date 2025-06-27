@@ -13,9 +13,14 @@ import org.apache.arrow.flight.FlightClient;
 import org.apache.arrow.flight.FlightStream;
 import org.apache.arrow.flight.HeaderCallOption;
 import org.apache.arrow.flight.Ticket;
+import org.apache.arrow.vector.VarBinaryVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.core.common.bytes.BytesArray;
+import org.opensearch.core.common.bytes.BytesReference;
+import org.opensearch.core.common.io.stream.NamedWriteableAwareStreamInput;
+import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.transport.TransportResponse;
 import org.opensearch.transport.Header;
@@ -184,8 +189,18 @@ class FlightTransportResponse<T extends TransportResponse> implements StreamTran
         if (root.getRowCount() == 0) {
             throw new IllegalStateException("Empty response received");
         }
-        try (VectorStreamInput input = new VectorStreamInput(root, namedWriteableRegistry)) {
-            return handler.read(input);
+
+        VarBinaryVector v = (VarBinaryVector) root.getVector("payload");
+        int len = v.getValueLength(0);
+        int off = v.getStartOffset(0);
+        byte[] b = new byte[len];
+        v.getDataBuffer().getBytes(off, b, 0, len);   // copy out
+        BytesReference ref = new BytesArray(b);
+
+        // InboundMessage streamInput, NativeMessageHandler namedWriteableStream
+        try (StreamInput in = ref.streamInput()) {
+            StreamInput namedWriteableAwareStreamInput = new NamedWriteableAwareStreamInput(in, namedWriteableRegistry);
+            return handler.read(namedWriteableAwareStreamInput);
         } catch (IOException e) {
             throw new TransportException("Failed to deserialize response", e);
         }
