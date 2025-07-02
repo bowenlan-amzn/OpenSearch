@@ -322,8 +322,8 @@ public abstract class AggregatorBase extends Aggregator {
     public void sendBatch(InternalAggregation batch) {
         InternalAggregations batchAggResult = new InternalAggregations(List.of(batch));
 
-        // TODO bowen clone the query result
         final QuerySearchResult queryResult = context.queryResult();
+        // clone the query result to avoid issue in concurrent scenario
         final QuerySearchResult cloneResult = new QuerySearchResult(queryResult.getContextId(), queryResult.getSearchShardTarget(), queryResult.getShardSearchRequest());
         cloneResult.aggregations(batchAggResult);
         logger.debug("Thread [{}]: set batchAggResult [{}]", Thread.currentThread(), batchAggResult.asMap());
@@ -334,9 +334,9 @@ public abstract class AggregatorBase extends Aggregator {
         fetchResult.hits(SearchHits.empty());
         final QueryFetchSearchResult result = new QueryFetchSearchResult(cloneResult, fetchResult);
         // flush back
-        logger.debug("Thread [{}]: send agg result before [{}]", Thread.currentThread(), result.queryResult().aggregations().asMap());
+        // logger.debug("Thread [{}]: send agg result before [{}]", Thread.currentThread(), result.queryResult().aggregations().asMap());
         context.getListener().onStreamResponse(result);
-        logger.debug("Thread [{}]: send agg result after [{}]", Thread.currentThread(), result.queryResult().aggregations().asMap());
+        // logger.debug("Thread [{}]: send agg result after [{}]", Thread.currentThread(), result.queryResult().aggregations().asMap());
     }
 
     /** Called upon release of the aggregator. */
