@@ -78,7 +78,7 @@ public final class QuerySearchResult extends SearchPhaseResult {
      * which have a fairly high overhead in the JVM. So we delay deserializing
      * them until just before we need them.
      */
-    private InternalAggregations aggregations;
+    private DelayableWriteable<InternalAggregations> aggregations;
     private boolean hasAggs;
     private Suggest suggest;
     private boolean searchTimedOut;
@@ -218,21 +218,21 @@ public final class QuerySearchResult extends SearchPhaseResult {
      * Returns and nulls out the aggregation for this search results. This allows to free up memory once the aggregation is consumed.
      * @throws IllegalStateException if the aggregations have already been consumed.
      */
-    public InternalAggregations consumeAggs() {
+    public DelayableWriteable<InternalAggregations> consumeAggs() {
         if (aggregations == null) {
             throw new IllegalStateException("aggs already consumed");
         }
-        InternalAggregations aggs = aggregations;
+        DelayableWriteable<InternalAggregations> aggs = aggregations;
         aggregations = null;
         return aggs;
     }
 
     public void aggregations(InternalAggregations aggregations) {
-        this.aggregations = aggregations == null ? null : aggregations;
+        this.aggregations = aggregations == null ? null : DelayableWriteable.referencing(aggregations);
         hasAggs = aggregations != null;
     }
 
-    public InternalAggregations aggregations() {
+    public DelayableWriteable<InternalAggregations> aggregations() {
         return aggregations;
     }
 
@@ -353,7 +353,7 @@ public final class QuerySearchResult extends SearchPhaseResult {
         }
         setTopDocs(readTopDocs(in));
         if (hasAggs = in.readBoolean()) {
-            aggregations = InternalAggregations.readFrom(in);
+            aggregations = DelayableWriteable.delayed(InternalAggregations::readFrom, in);
         }
         if (in.readBoolean()) {
             suggest = new Suggest(in);
