@@ -111,6 +111,9 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
             return false;
         }
 
+        // temporarily disable the optimization to test bulk collection
+        if (true) return false;
+
         if (pointConverter != null) {
             Number segMax = findLeafMaxValue(ctx.reader(), pointField, pointConverter);
             if (segMax != null) {
