@@ -204,6 +204,11 @@ public class MultiBucketCollector extends BucketCollector {
             }
             in.collect(doc, owningBucketOrd);
         }
+
+        @Override
+        public void finish() throws IOException {
+            in.finish();
+        }
     }
 
     private static class ScoreCachingWrappingScorer extends Scorable {
@@ -273,6 +278,13 @@ public class MultiBucketCollector extends BucketCollector {
                         throw new CollectionTerminatedException();
                     }
                 }
+            }
+        }
+
+        @Override
+        public void finish() throws IOException {
+            for (int i = 0; i < numCollectors; ++i) {
+                collectors[i].finish();
             }
         }
     }
