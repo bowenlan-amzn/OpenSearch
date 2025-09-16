@@ -150,6 +150,11 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
             }
         }
 
+        // Use batched collector for no-parent-bucket case
+        if (parent == null) {
+            return getBatchedLeafCollector(ctx, sub);
+        }
+
         final BigArrays bigArrays = context.bigArrays();
         final SortedNumericDoubleValues allValues = valuesSource.doubleValues(ctx);
         final NumericDoubleValues values = MultiValueMode.MAX.select(allValues);
@@ -169,8 +174,81 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
                     maxes.set(bucket, max);
                 }
             }
-
         };
+    }
+
+    private LeafBucketCollector getBatchedLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
+        final SortedNumericDoubleValues allValues = valuesSource.doubleValues(ctx);
+        final NumericDoubleValues values = MultiValueMode.MAX.select(allValues);
+
+        return new BatchedLeafBucketCollector(sub, allValues, values);
+    }
+
+    private static final int DOC_BUFFER_SIZE = 64;
+
+    private class BatchedLeafBucketCollector extends LeafBucketCollectorBase {
+        final int[] docBuffer = new int[DOC_BUFFER_SIZE];
+        final double[] valueBuffer = new double[docBuffer.length];
+        final NumericDoubleValues values;
+        int bufferPos = 0;
+
+        BatchedLeafBucketCollector(LeafBucketCollector sub, SortedNumericDoubleValues allValues, NumericDoubleValues values) {
+            super(sub, allValues);
+            this.values = values;
+        }
+
+        @Override
+        public void collect(int doc, long bucket) throws IOException {
+            // bucket is always 0 for no-parent-bucket case
+            assert bucket == 0;
+
+            docBuffer[bufferPos] = doc;
+            bufferPos++;
+
+            // When buffer is full, process all docs in batch
+            if (bufferPos == docBuffer.length) {
+                processBatch();
+            }
+        }
+
+        void processBatch() throws IOException {
+            if (bufferPos == 0) return;
+
+            loadValuesFromBuffer();
+            double batchMax = findMaxFromValueBuffer();
+
+            if (batchMax != Double.NEGATIVE_INFINITY) {
+                double currentMax = maxes.get(0);
+                maxes.set(0, Math.max(currentMax, batchMax));
+            }
+
+            // Reset buffer position
+            bufferPos = 0;
+        }
+
+        private void loadValuesFromBuffer() throws IOException {
+            for (int i = 0; i < bufferPos; i++) {
+                int doc = docBuffer[i];
+                if (values.advanceExact(doc)) {
+                    valueBuffer[i] = values.doubleValue();
+                } else {
+                    valueBuffer[i] = Double.NEGATIVE_INFINITY;
+                }
+            }
+        }
+
+        private double findMaxFromValueBuffer() {
+            double batchMax = Double.NEGATIVE_INFINITY;
+            for (int i = 0; i < bufferPos; i++) {
+                batchMax = Math.max(batchMax, valueBuffer[i]);
+            }
+            return batchMax;
+        }
+
+        @Override
+        public void finish() throws IOException {
+            processBatch();
+        }
     }
 
     private void precomputeLeafUsingStarTree(LeafReaderContext ctx, CompositeIndexFieldInfo starTree) throws IOException {
