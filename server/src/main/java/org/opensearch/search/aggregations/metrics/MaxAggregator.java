@@ -31,6 +31,8 @@
 
 package org.opensearch.search.aggregations.metrics;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
@@ -86,6 +88,7 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
     DoubleArray maxes;
 
     final String fieldName;
+    private static final Logger logger = LogManager.getLogger(MaxAggregator.class);
 
     MaxAggregator(String name, ValuesSourceConfig config, SearchContext context, Aggregator parent, Map<String, Object> metadata)
         throws IOException {
@@ -165,6 +168,7 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
         if (parent == null) {
             LeafBucketCollector batchCollector = getBatchedLeafCollector(ctx, sub);
             if (batchCollector != null) {
+                logger.debug("use batch collector");
                 return batchCollector;
             }
         }
