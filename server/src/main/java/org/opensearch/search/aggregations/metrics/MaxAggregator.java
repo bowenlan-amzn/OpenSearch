@@ -31,9 +31,12 @@
 
 package org.opensearch.search.aggregations.metrics;
 
+import org.apache.lucene.index.DocValues;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.LeafReaderContext;
+import org.apache.lucene.index.NumericDocValues;
 import org.apache.lucene.index.PointValues;
+import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.search.CollectionTerminatedException;
 import org.apache.lucene.search.DocIdStream;
 import org.apache.lucene.search.ScoreMode;
@@ -82,6 +85,8 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
 
     DoubleArray maxes;
 
+    final String fieldName;
+
     MaxAggregator(String name, ValuesSourceConfig config, SearchContext context, Aggregator parent, Map<String, Object> metadata)
         throws IOException {
         super(name, context, parent, metadata);
@@ -98,6 +103,8 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
         } else {
             pointField = null;
         }
+
+        fieldName = config.fieldContext().field();
     }
 
     @Override
@@ -156,7 +163,10 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
 
         // Use batched collector for no-parent-bucket case
         if (parent == null) {
-            return getBatchedLeafCollector(ctx, sub);
+            LeafBucketCollector batchCollector = getBatchedLeafCollector(ctx, sub);
+            if (batchCollector != null) {
+                return batchCollector;
+            }
         }
 
         final BigArrays bigArrays = context.bigArrays();
@@ -182,22 +192,27 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
     }
 
     private LeafBucketCollector getBatchedLeafCollector(LeafReaderContext ctx, final LeafBucketCollector sub) throws IOException {
-        final SortedNumericDoubleValues allValues = valuesSource.doubleValues(ctx);
-        final NumericDoubleValues values = MultiValueMode.MAX.select(allValues);
+        // final SortedNumericDoubleValues allValues = valuesSource.doubleValues(ctx);
+        // final NumericDoubleValues values = MultiValueMode.MAX.select(allValues);
 
-        return new BatchedLeafBucketCollector(sub, allValues, values);
+        SortedNumericDocValues values = DocValues.getSortedNumeric(ctx.reader(), fieldName);
+        NumericDocValues singleton = DocValues.unwrapSingleton(values);
+        if (singleton == null) {
+            return null;
+        }
+        return new BatchedLeafBucketCollector(sub, singleton);
     }
 
     private static final int DOC_BUFFER_SIZE = 64;
 
     private class BatchedLeafBucketCollector extends LeafBucketCollectorBase {
         final int[] docBuffer = new int[DOC_BUFFER_SIZE];
-        final double[] valueBuffer = new double[docBuffer.length];
-        final NumericDoubleValues values;
+        final long[] valueBuffer = new long[docBuffer.length];
+        final NumericDocValues values;
         int bufferPos = 0;
 
-        BatchedLeafBucketCollector(LeafBucketCollector sub, SortedNumericDoubleValues allValues, NumericDoubleValues values) {
-            super(sub, allValues);
+        BatchedLeafBucketCollector(LeafBucketCollector sub, NumericDocValues values) {
+            super(sub, values);
             this.values = values;
         }
 
@@ -206,69 +221,67 @@ class MaxAggregator extends NumericMetricsAggregator.SingleValue implements Star
             // bucket is always 0 for no-parent-bucket case
             assert bucket == 0;
 
-            docBuffer[bufferPos] = doc;
-            bufferPos++;
-
-            // When buffer is full, process all docs in batch
-            if (bufferPos == docBuffer.length) {
-                processBatch();
+            if (values.advanceExact(doc)) {
+                final double value = values.longValue();
+                double max = maxes.get(0);
+                max = Math.max(max, value);
+                maxes.set(0, max);
             }
         }
 
         @Override
         public void collect(DocIdStream stream) throws IOException {
-            stream.forEach(doc -> {
-                docBuffer[bufferPos] = doc;
-                bufferPos++;
-
-                if (bufferPos == docBuffer.length) {
-                    try {
-                        processBatch();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
+            for (int count = stream.intoArray(docBuffer);
+                 count != 0;
+                 count = stream.intoArray(docBuffer)) {
+                // This guarantees that all docs in docBuffer have a value.
+                values.longValues(count, docBuffer, valueBuffer, 0L);
+                double max = maxes.get(0);
+                for (int i = 0; i < count; ++i) {
+                    max = Math.max(max, valueBuffer[i]);
                 }
-            });
-        }
-
-        void processBatch() throws IOException {
-            if (bufferPos == 0) return;
-
-            loadValuesFromBuffer();
-            double batchMax = findMaxFromValueBuffer();
-
-            if (batchMax != Double.NEGATIVE_INFINITY) {
-                double currentMax = maxes.get(0);
-                maxes.set(0, Math.max(currentMax, batchMax));
-            }
-
-            // Reset buffer position
-            bufferPos = 0;
-        }
-
-        private void loadValuesFromBuffer() throws IOException {
-            for (int i = 0; i < bufferPos; i++) {
-                int doc = docBuffer[i];
-                if (values.advanceExact(doc)) {
-                    valueBuffer[i] = values.doubleValue();
-                } else {
-                    valueBuffer[i] = Double.NEGATIVE_INFINITY;
-                }
+                maxes.set(0, max);
             }
         }
 
-        private double findMaxFromValueBuffer() {
-            double batchMax = Double.NEGATIVE_INFINITY;
-            for (int i = 0; i < bufferPos; i++) {
-                batchMax = Math.max(batchMax, valueBuffer[i]);
-            }
-            return batchMax;
-        }
-
-        @Override
-        public void finish() throws IOException {
-            processBatch();
-        }
+        // void processBatch() throws IOException {
+        //     if (bufferPos == 0) return;
+        //
+        //     loadValuesFromBuffer();
+        //     double batchMax = findMaxFromValueBuffer();
+        //
+        //     if (batchMax != Double.NEGATIVE_INFINITY) {
+        //         double currentMax = maxes.get(0);
+        //         maxes.set(0, Math.max(currentMax, batchMax));
+        //     }
+        //
+        //     // Reset buffer position
+        //     bufferPos = 0;
+        // }
+        //
+        // private void loadValuesFromBuffer() throws IOException {
+        //     for (int i = 0; i < bufferPos; i++) {
+        //         int doc = docBuffer[i];
+        //         if (values.advanceExact(doc)) {
+        //             valueBuffer[i] = values.doubleValue();
+        //         } else {
+        //             valueBuffer[i] = Double.NEGATIVE_INFINITY;
+        //         }
+        //     }
+        // }
+        //
+        // private double findMaxFromValueBuffer() {
+        //     double batchMax = Double.NEGATIVE_INFINITY;
+        //     for (int i = 0; i < bufferPos; i++) {
+        //         batchMax = Math.max(batchMax, valueBuffer[i]);
+        //     }
+        //     return batchMax;
+        // }
+        //
+        // @Override
+        // public void finish() throws IOException {
+        //     processBatch();
+        // }
     }
 
     private void precomputeLeafUsingStarTree(LeafReaderContext ctx, CompositeIndexFieldInfo starTree) throws IOException {
