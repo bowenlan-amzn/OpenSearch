@@ -130,6 +130,9 @@ class AvgAggregator extends NumericMetricsAggregator.SingleValue implements Star
         final BigArrays bigArrays = context.bigArrays();
         final SortedNumericDoubleValues values = valuesSource.doubleValues(ctx);
         final CompensatedSum kahanSummation = new CompensatedSum(0, 0);
+        // Buffers for bulk doc value retrieval
+        final int[] docBuffer = new int[256];
+        final double[] valueBuffer = new double[256];
 
         return new LeafBucketCollectorBase(sub, values) {
             @Override
@@ -150,17 +153,15 @@ class AvgAggregator extends NumericMetricsAggregator.SingleValue implements Star
             @Override
             public void collect(DocIdStream stream, long bucket) throws IOException {
                 setKahanSummation(bucket);
-                final int[] count = { 0 };
-                stream.forEach((doc) -> {
-                    if (values.advanceExact(doc)) {
-                        int valueCount = values.docValueCount();
-                        count[0] += valueCount;
-                        for (int i = 0; i < valueCount; i++) {
-                            kahanSummation.add(values.nextValue());
-                        }
+                int totalCount = 0;
+                for (int count = stream.intoArray(docBuffer); count > 0; count = stream.intoArray(docBuffer)) {
+                    values.doubleValues(count, docBuffer, valueBuffer, 0.0);
+                    for (int i = 0; i < count; i++) {
+                        kahanSummation.add(valueBuffer[i]);
                     }
-                });
-                counts.increment(bucket, count[0]);
+                    totalCount += count;
+                }
+                counts.increment(bucket, totalCount);
                 sums.set(bucket, kahanSummation.value());
                 compensations.set(bucket, kahanSummation.delta());
             }

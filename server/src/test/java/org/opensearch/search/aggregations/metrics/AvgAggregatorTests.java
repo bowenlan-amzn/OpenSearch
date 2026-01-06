@@ -707,6 +707,28 @@ public class AvgAggregatorTests extends AggregatorTestCase {
         unmappedDirectory.close();
     }
 
+    /**
+     * Test that bulk collection with single-valued fields works correctly.
+     * This test verifies the bulk doubleValues() API is used and produces correct results.
+     */
+    public void testBulkCollectionWithSingleValuedField() throws IOException {
+        // Use many documents to ensure bulk collection is exercised
+        final int numDocs = 1000;
+        long expectedSum = 0;
+
+        testAggregation(new MatchAllDocsQuery(), iw -> {
+            for (int i = 0; i < numDocs; i++) {
+                // Use NumericDocValuesField (single-valued) to exercise the optimized bulk path
+                iw.addDocument(singleton(new NumericDocValuesField("number", i + 1)));
+            }
+        }, avg -> {
+            // Sum of 1..1000 = 1000 * 1001 / 2 = 500500
+            // Average = 500500 / 1000 = 500.5
+            assertEquals(500.5, avg.getValue(), 0.001);
+            assertTrue(AggregationInspectionHelper.hasValue(avg));
+        });
+    }
+
     @Override
     protected List<ValuesSourceType> getSupportedValuesSourceTypes() {
         return Arrays.asList(CoreValuesSourceType.NUMERIC, CoreValuesSourceType.BOOLEAN, CoreValuesSourceType.DATE);

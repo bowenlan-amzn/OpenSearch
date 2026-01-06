@@ -566,11 +566,21 @@ public enum FieldData {
     }
 
     /**
-     * Sorted values casted as a double type
+     * {@link SortedNumericDoubleValues} instance that wraps a {@link SortedNumericDocValues}
+     * and casts the stored long values directly to doubles.
+     * <p>
+     * This is used for integer field types ({@code long}, {@code integer}, {@code short}, {@code byte})
+     * where the stored value is the actual number. For example, the integer value {@code 100}
+     * is stored as the long {@code 100} and simply cast to double {@code 100.0}.
+     * <p>
+     * This is different from {@link SortableLongBitsToSortedNumericDoubleValues} which handles
+     * floating-point field types ({@code double}, {@code float}) where the stored values are
+     * IEEE 754 bits that need decoding via {@link org.apache.lucene.util.NumericUtils#sortableLongToDouble(long)}.
      *
+     * @see FieldData#castToDouble(SortedNumericDocValues)
      * @opensearch.internal
      */
-    private static class SortedDoubleCastedValues extends SortedNumericDoubleValues {
+    static class SortedDoubleCastedValues extends SortedNumericDoubleValues {
 
         private final SortedNumericDocValues values;
 
@@ -596,6 +606,28 @@ public enum FieldData {
         @Override
         public int advance(int target) throws IOException {
             return values.advance(target);
+        }
+
+        @Override
+        public void doubleValues(int size, int[] docs, double[] output, double defaultValue) throws IOException {
+            NumericDocValues singleton = DocValues.unwrapSingleton(values);
+            if (singleton != null) {
+                // Single-valued: use Lucene's native bulk API (optimized in codec)
+                long[] longBuffer = new long[size];
+                singleton.longValues(size, docs, longBuffer, (long) defaultValue);
+                for (int i = 0; i < size; i++) {
+                    output[i] = longBuffer[i];
+                }
+            } else {
+                // Multi-valued: fall back to doc-by-doc
+                for (int i = 0; i < size; i++) {
+                    if (values.advanceExact(docs[i])) {
+                        output[i] = values.nextValue();
+                    } else {
+                        output[i] = defaultValue;
+                    }
+                }
+            }
         }
     }
 

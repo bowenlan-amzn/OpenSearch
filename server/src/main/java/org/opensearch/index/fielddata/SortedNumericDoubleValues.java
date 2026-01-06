@@ -81,4 +81,25 @@ public abstract class SortedNumericDoubleValues {
     public int advance(int target) throws IOException {
         throw new UnsupportedOperationException();
     }
+
+    /**
+     * Bulk retrieval of double values.
+     * <p>
+     * Subclasses that wrap singleton NumericDocValues should override this method
+     * to use the optimized {@code NumericDocValues.longValues()} bulk API.
+     *
+     * @param size number of docs to retrieve
+     * @param docs sorted array of doc IDs (ascending, no duplicates)
+     * @param values output buffer for values
+     * @param defaultValue value for docs without a value
+     */
+    public void doubleValues(int size, int[] docs, double[] values, double defaultValue) throws IOException {
+        for (int i = 0; i < size; i++) {
+            if (advanceExact(docs[i])) {
+                values[i] = nextValue();
+            } else {
+                values[i] = defaultValue;
+            }
+        }
+    }
 }
