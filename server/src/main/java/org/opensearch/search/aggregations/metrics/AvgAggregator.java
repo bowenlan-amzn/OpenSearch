@@ -169,17 +169,20 @@ class AvgAggregator extends NumericMetricsAggregator.SingleValue implements Star
             @Override
             public void collectRange(int min, int max) throws IOException {
                 setKahanSummation(0);
-                int count = 0;
-                for (int docId = min; docId < max; docId++) {
-                    if (values.advanceExact(docId)) {
-                        int valueCount = values.docValueCount();
-                        count += valueCount;
-                        for (int i = 0; i < valueCount; i++) {
-                            kahanSummation.add(values.nextValue());
-                        }
+                int totalCount = 0;
+                for (int start = min; start < max; start += docBuffer.length) {
+                    int end = Math.min(start + docBuffer.length, max);
+                    int count = end - start;
+                    for (int i = 0; i < count; i++) {
+                        docBuffer[i] = start + i;
                     }
+                    values.doubleValues(count, docBuffer, valueBuffer, 0.0);
+                    for (int i = 0; i < count; i++) {
+                        kahanSummation.add(valueBuffer[i]);
+                    }
+                    totalCount += count;
                 }
-                counts.increment(0, count);
+                counts.increment(0, totalCount);
                 sums.set(0, kahanSummation.value());
                 compensations.set(0, kahanSummation.delta());
             }
