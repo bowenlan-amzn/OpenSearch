@@ -58,9 +58,14 @@ import java.io.IOException;
 final class SortableLongBitsToSortedNumericDoubleValues extends SortedNumericDoubleValues {
 
     private final SortedNumericDocValues values;
+    // Cache singleton check to avoid repeated unwrapping in doubleValues()
+    private final NumericDocValues singleton;
+    // Reusable buffer for bulk retrieval to avoid allocation per batch
+    private long[] longBuffer;
 
     SortableLongBitsToSortedNumericDoubleValues(SortedNumericDocValues values) {
         this.values = values;
+        this.singleton = DocValues.unwrapSingleton(values);
     }
 
     @Override
@@ -90,10 +95,12 @@ final class SortableLongBitsToSortedNumericDoubleValues extends SortedNumericDou
 
     @Override
     public void doubleValues(int size, int[] docs, double[] output, double defaultValue) throws IOException {
-        NumericDocValues singleton = DocValues.unwrapSingleton(values);
         if (singleton != null) {
             // Single-valued: use Lucene's native bulk API (optimized in codec)
-            long[] longBuffer = new long[size];
+            // Reuse buffer to avoid allocation per batch
+            if (longBuffer == null || longBuffer.length < size) {
+                longBuffer = new long[size];
+            }
             singleton.longValues(size, docs, longBuffer, NumericUtils.doubleToSortableLong(defaultValue));
             for (int i = 0; i < size; i++) {
                 output[i] = NumericUtils.sortableLongToDouble(longBuffer[i]);

@@ -583,9 +583,14 @@ public enum FieldData {
     static class SortedDoubleCastedValues extends SortedNumericDoubleValues {
 
         private final SortedNumericDocValues values;
+        // Cache singleton check to avoid repeated unwrapping in doubleValues()
+        private final NumericDocValues singleton;
+        // Reusable buffer for bulk retrieval to avoid allocation per batch
+        private long[] longBuffer;
 
         SortedDoubleCastedValues(SortedNumericDocValues in) {
             this.values = in;
+            this.singleton = DocValues.unwrapSingleton(in);
         }
 
         @Override
@@ -610,10 +615,12 @@ public enum FieldData {
 
         @Override
         public void doubleValues(int size, int[] docs, double[] output, double defaultValue) throws IOException {
-            NumericDocValues singleton = DocValues.unwrapSingleton(values);
             if (singleton != null) {
                 // Single-valued: use Lucene's native bulk API (optimized in codec)
-                long[] longBuffer = new long[size];
+                // Reuse buffer to avoid allocation per batch
+                if (longBuffer == null || longBuffer.length < size) {
+                    longBuffer = new long[size];
+                }
                 singleton.longValues(size, docs, longBuffer, (long) defaultValue);
                 for (int i = 0; i < size; i++) {
                     output[i] = longBuffer[i];
