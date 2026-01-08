@@ -270,14 +270,12 @@ public enum FieldData {
 
     /**
      * Wrap the provided {@link SortedNumericDocValues} instance to cast all values to doubles.
+     * <p>
+     * Note: We always use SortedDoubleCastedValues (even for singletons) because it has an
+     * optimized doubleValues() implementation that uses Lucene's bulk API for singleton fields.
      */
     public static SortedNumericDoubleValues castToDouble(final SortedNumericDocValues values) {
-        final NumericDocValues singleton = DocValues.unwrapSingleton(values);
-        if (singleton != null) {
-            return singleton(new DoubleCastedValues(singleton));
-        } else {
-            return new SortedDoubleCastedValues(values);
-        }
+        return new SortedDoubleCastedValues(values);
     }
 
     /**
