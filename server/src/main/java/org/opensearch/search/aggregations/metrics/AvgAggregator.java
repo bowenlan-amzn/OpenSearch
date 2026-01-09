@@ -34,6 +34,7 @@ package org.opensearch.search.aggregations.metrics;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.DocIdStream;
+import org.apache.lucene.search.DocIdStreamHelper;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.util.FixedBitSet;
 import org.apache.lucene.util.NumericUtils;
@@ -168,23 +169,7 @@ class AvgAggregator extends NumericMetricsAggregator.SingleValue implements Star
 
             @Override
             public void collectRange(int min, int max) throws IOException {
-                setKahanSummation(0);
-                int totalCount = 0;
-                for (int start = min; start < max; start += docBuffer.length) {
-                    int end = Math.min(start + docBuffer.length, max);
-                    int count = end - start;
-                    for (int i = 0; i < count; i++) {
-                        docBuffer[i] = start + i;
-                    }
-                    values.doubleValues(count, docBuffer, valueBuffer, 0.0);
-                    for (int i = 0; i < count; i++) {
-                        kahanSummation.add(valueBuffer[i]);
-                    }
-                    totalCount += count;
-                }
-                counts.increment(0, totalCount);
-                sums.set(0, kahanSummation.value());
-                compensations.set(0, kahanSummation.delta());
+                collect(DocIdStreamHelper.getRangeDocIdStream(min, max), 0);
             }
 
             private void setKahanSummation(long bucket) {

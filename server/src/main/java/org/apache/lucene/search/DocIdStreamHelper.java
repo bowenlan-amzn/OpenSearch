@@ -18,4 +18,8 @@ public class DocIdStreamHelper {
     public static DocIdStream getDocIdStream(FixedBitSet fixedBitSet) {
         return new BitSetDocIdStream(fixedBitSet, 0);
     }
+
+    public static DocIdStream getRangeDocIdStream(int min, int max) {
+        return new RangeDocIdStream(min, max);
+    }
 }
