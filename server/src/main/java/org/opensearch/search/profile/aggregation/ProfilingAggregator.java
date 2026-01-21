@@ -55,6 +55,7 @@ public class ProfilingAggregator extends Aggregator implements Streamable {
     private final Aggregator delegate;
     private final AggregationProfiler profiler;
     private AggregationProfileBreakdown profileBreakdown;
+    private long leafCollectorStartTimeNanos;  // For boundary-based timing without wrapper
 
     public ProfilingAggregator(Aggregator delegate, AggregationProfiler profiler) {
         this.profiler = profiler;
@@ -120,17 +121,36 @@ public class ProfilingAggregator extends Aggregator implements Streamable {
 
     @Override
     public LeafBucketCollector getLeafCollector(LeafReaderContext ctx) throws IOException {
+        // Finish timing for the previous segment before starting a new one
+        finishCurrentLeafCollectorTiming();
+
         Timer timer = profileBreakdown.getTimer(AggregationTimingType.BUILD_LEAF_COLLECTOR);
         timer.start();
+        LeafBucketCollector leafCollector;
         try {
-            return new ProfilingLeafBucketCollector(delegate.getLeafCollector(ctx), profileBreakdown);
+            leafCollector = delegate.getLeafCollector(ctx);
         } finally {
             timer.stop();
+        }
+        // Start timing for this segment - record start time for boundary timing
+        leafCollectorStartTimeNanos = System.nanoTime();
+        // Return delegate directly - ZERO per-document wrapper overhead
+        return leafCollector;
+    }
+
+    private void finishCurrentLeafCollectorTiming() {
+        if (leafCollectorStartTimeNanos > 0) {
+            long elapsedNanos = System.nanoTime() - leafCollectorStartTimeNanos;
+            Timer collectTimer = profileBreakdown.getTimer(AggregationTimingType.COLLECT);
+            collectTimer.addExternalTiming(elapsedNanos, 1);
+            leafCollectorStartTimeNanos = 0;
         }
     }
 
     @Override
     public void reset() {
+        // Finish timing for any in-progress segment before reset
+        finishCurrentLeafCollectorTiming();
         delegate.reset();
         super.reset();
     }
@@ -150,6 +170,9 @@ public class ProfilingAggregator extends Aggregator implements Streamable {
 
     @Override
     public void postCollection() throws IOException {
+        // Finish timing for the last segment
+        finishCurrentLeafCollectorTiming();
+
         Timer timer = profileBreakdown.getTimer(AggregationTimingType.POST_COLLECTION);
         timer.start();
         try {

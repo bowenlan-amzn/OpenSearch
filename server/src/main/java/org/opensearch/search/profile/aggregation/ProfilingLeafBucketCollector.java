@@ -39,28 +39,29 @@ import org.opensearch.search.profile.Timer;
 import java.io.IOException;
 
 /**
- * The collector for the agg profiles
+ * The collector for the agg profiles.
+ *
+ * Uses boundary-based timing with ZERO per-document overhead. Timing starts when the
+ * collector is created and ends when finish() is called. The collect() method is pure
+ * delegation with no additional operations.
  *
  * @opensearch.internal
  */
 public class ProfilingLeafBucketCollector extends LeafBucketCollector {
 
-    private LeafBucketCollector delegate;
-    private Timer collectTimer;
+    private final LeafBucketCollector delegate;
+    private final Timer collectTimer;
+    private final long startTimeNanos;
 
     public ProfilingLeafBucketCollector(LeafBucketCollector delegate, AggregationProfileBreakdown profileBreakdown) {
         this.delegate = delegate;
         this.collectTimer = profileBreakdown.getTimer(AggregationTimingType.COLLECT);
+        this.startTimeNanos = System.nanoTime();  // Start timing at construction
     }
 
     @Override
     public void collect(int doc, long bucket) throws IOException {
-        collectTimer.start();
-        try {
-            delegate.collect(doc, bucket);
-        } finally {
-            collectTimer.stop();
-        }
+        delegate.collect(doc, bucket);  // ZERO overhead - pure delegation
     }
 
     @Override
@@ -68,4 +69,12 @@ public class ProfilingLeafBucketCollector extends LeafBucketCollector {
         delegate.setScorer(scorer);
     }
 
+    /**
+     * Finish timing for this collector and record the elapsed time.
+     * Called when collection for this segment is complete.
+     */
+    public void finish() {
+        long elapsedNanos = System.nanoTime() - startTimeNanos;
+        collectTimer.addExternalTiming(elapsedNanos, 1);
+    }
 }

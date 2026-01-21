@@ -64,15 +64,13 @@ public final class ProfileWeight extends Weight {
 
     @Override
     public ScorerSupplier scorerSupplier(LeafReaderContext context) throws IOException {
-        Timer timer = profile.context(context).getTimer(QueryTimingType.BUILD_SCORER);
-        timer.start();
-        final ScorerSupplier subQueryScorerSupplier;
-        try {
-            subQueryScorerSupplier = subQueryWeight.scorerSupplier(context);
-        } finally {
-            timer.stop();
-        }
+        // Use boundary-based timing: record start time once, compute elapsed at end
+        final long startTimeNanos = System.nanoTime();
+        final Timer timer = profile.context(context).getTimer(QueryTimingType.BUILD_SCORER);
+        final ScorerSupplier subQueryScorerSupplier = subQueryWeight.scorerSupplier(context);
         if (subQueryScorerSupplier == null) {
+            // Record time for null case
+            timer.addExternalTiming(System.nanoTime() - startTimeNanos, 1);
             return null;
         }
 
@@ -80,22 +78,17 @@ public final class ProfileWeight extends Weight {
 
             @Override
             public Scorer get(long loadCost) throws IOException {
-                timer.start();
-                try {
-                    return new ProfileScorer(subQueryScorerSupplier.get(loadCost), profile.context(context));
-                } finally {
-                    timer.stop();
-                }
+                // Return raw scorer directly - ZERO wrapper overhead
+                // SCORE timing is sacrificed to eliminate wrapper dispatch overhead
+                Scorer scorer = subQueryScorerSupplier.get(loadCost);
+                // Record total build_scorer time at end
+                timer.addExternalTiming(System.nanoTime() - startTimeNanos, 1);
+                return scorer;
             }
 
             @Override
             public long cost() {
-                timer.start();
-                try {
-                    return subQueryScorerSupplier.cost();
-                } finally {
-                    timer.stop();
-                }
+                return subQueryScorerSupplier.cost();
             }
         };
     }

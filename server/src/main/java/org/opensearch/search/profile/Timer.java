@@ -141,6 +141,27 @@ public class Timer extends ProfileMetric {
         return timing;
     }
 
+    /**
+     * Add externally measured timing directly without using start/stop.
+     * This is useful for boundary-based timing where we measure total time
+     * for a batch of operations rather than timing each operation individually.
+     * This approach has minimal overhead (just 2 nanoTime calls total).
+     *
+     * @param elapsedNanos the elapsed time in nanoseconds
+     * @param operationCount the number of operations that occurred during this time
+     */
+    public final void addExternalTiming(long elapsedNanos, long operationCount) {
+        if (start != 0) {
+            throw new IllegalStateException("#start call misses a matching #stop call");
+        }
+        this.timing += elapsedNanos;
+        this.count += operationCount;
+        this.lastCount = this.count;
+        if (this.earliestTimerStartTime == 0) {
+            this.earliestTimerStartTime = System.nanoTime() - elapsedNanos;
+        }
+    }
+
     @Override
     public Map<String, Long> toBreakdownMap() {
         Map<String, Long> map = new HashMap<>();
