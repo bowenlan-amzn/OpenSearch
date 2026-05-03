@@ -6,7 +6,7 @@
  * compatible open source license.
  */
 
-package org.opensearch.example.stream;
+package org.opensearch.analytics.exec.action;
 
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.opensearch.arrow.flight.transport.ArrowBatchResponse;
@@ -15,16 +15,18 @@ import org.opensearch.core.common.io.stream.StreamInput;
 import java.io.IOException;
 
 /**
- * Example native Arrow response. Extend {@link ArrowBatchResponse} and provide two constructors:
- * one wrapping a {@link VectorSchemaRoot} (send side) and one taking {@link StreamInput} (receive side).
+ * Transport response carrying a single Arrow {@link VectorSchemaRoot} batch produced by
+ * fragment execution on a data node, streamed back to the coordinator.
+ *
+ * @opensearch.internal
  */
-class NativeArrowStreamDataResponse extends ArrowBatchResponse {
+public class FragmentExecutionArrowResponse extends ArrowBatchResponse {
 
-    NativeArrowStreamDataResponse(VectorSchemaRoot root) {
+    public FragmentExecutionArrowResponse(VectorSchemaRoot root) {
         super(root);
     }
 
-    NativeArrowStreamDataResponse(StreamInput in) throws IOException {
+    public FragmentExecutionArrowResponse(StreamInput in) throws IOException {
         super(in);
     }
 }
