@@ -14,8 +14,12 @@ import org.opensearch.analytics.exec.task.AnalyticsQueryTask;
 import org.opensearch.analytics.planner.dag.QueryDAG;
 import org.opensearch.arrow.flight.transport.ArrowAllocatorProvider;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Per-query context. Created once in {@link DefaultPlanExecutor#execute}
@@ -29,6 +33,8 @@ import java.util.concurrent.Executor;
  * @opensearch.internal
  */
 public class QueryContext {
+
+    private static final Logger logger = LogManager.getLogger(QueryContext.class);
 
     // TODO: make configurable via cluster setting (like search.max_concurrent_shard_requests)
     private static final int DEFAULT_MAX_CONCURRENT_SHARD_REQUESTS = 5;
@@ -127,20 +133,49 @@ public class QueryContext {
         return alloc;
     }
 
+    private static final long ALLOCATOR_DRAIN_TIMEOUT_MS = 200;
+    private static final long ALLOCATOR_DRAIN_POLL_INTERVAL_MS = 1;
+
     /**
-     * Closes the per-query buffer allocator if it was created. Idempotent and
-     * serialized with {@link #bufferAllocator()} so close can't race with lazy
-     * creation. After close, subsequent {@link #bufferAllocator()} calls throw
-     * rather than silently creating a second allocator.
+     * Closes the per-query buffer allocator if it was created. Waits briefly
+     * for outstanding allocations to drain (Rust FFI release callbacks fire
+     * asynchronously after the native execution stream completes). If buffers
+     * remain after the timeout, logs a warning and closes anyway — the memory
+     * is held by the native runtime and will be freed when it drops references.
      */
     public void closeBufferAllocator() {
         synchronized (this) {
             if (closed) return;
             closed = true;
             if (bufferAllocator != null) {
-                bufferAllocator.close();
+                waitForAllocatorDrain(bufferAllocator);
+                try {
+                    bufferAllocator.close();
+                } catch (IllegalStateException e) {
+                    logger.warn(
+                        "query [{}]: closing allocator with outstanding native FFI buffers ({})",
+                        dag.queryId(),
+                        e.getMessage()
+                    );
+                }
                 bufferAllocator = null;
             }
+        }
+    }
+
+    private void waitForAllocatorDrain(BufferAllocator allocator) {
+        long allocated = allocator.getAllocatedMemory();
+        if (allocated == 0) return;
+
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(ALLOCATOR_DRAIN_TIMEOUT_MS);
+        while (allocated > 0 && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(ALLOCATOR_DRAIN_POLL_INTERVAL_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            allocated = allocator.getAllocatedMemory();
         }
     }
 
