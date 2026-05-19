@@ -196,12 +196,37 @@ abstract class AbstractDatafusionReduceSink implements ExchangeSink {
      */
     protected final void drainOutputIntoDownstream(StreamHandle outStream) {
         BufferAllocator alloc = ctx.allocator();
+        long drainStart = System.nanoTime();
+        long streamNextTotal = 0;
+        long importTotal = 0;
+        int drainCount = 0;
         try (CDataDictionaryProvider dictProvider = new CDataDictionaryProvider()) {
             DatafusionResultStream.BatchIterator it = new DatafusionResultStream.BatchIterator(outStream, alloc, dictProvider);
             while (it.hasNext()) {
-                ctx.downstream().feed(it.next().getArrowRoot());
+                long t0 = System.nanoTime();
+                VectorSchemaRoot root = it.next().getArrowRoot();
+                long t1 = System.nanoTime();
+                streamNextTotal += (t1 - t0);
+                if (drainCount == 0) {
+                    long batchBytes = root.getFieldVectors().stream().mapToLong(v -> v.getBufferSize()).sum();
+                    org.apache.logging.log4j.LogManager.getLogger(AbstractDatafusionReduceSink.class).info(
+                        "[ReduceSink] DRAIN FIRST BATCH: rows={}, cols={}, bytes={}MB, schema={}",
+                        root.getRowCount(), root.getSchema().getFields().size(),
+                        batchBytes / (1024 * 1024),
+                        root.getSchema().getFields().stream()
+                            .map(f -> f.getName() + ":" + f.getType().toString())
+                            .reduce((a, b) -> a + ", " + b).orElse("empty"));
+                }
+                ctx.downstream().feed(root);
+                long t2 = System.nanoTime();
+                importTotal += (t2 - t1);
+                drainCount++;
             }
         }
+        long elapsed = (System.nanoTime() - drainStart) / 1_000_000;
+        org.apache.logging.log4j.LogManager.getLogger(AbstractDatafusionReduceSink.class).info(
+            "[ReduceSink] drain complete: {} batches in {}ms (streamNext={}ms, downstream={}ms)",
+            drainCount, elapsed, streamNextTotal / 1_000_000, importTotal / 1_000_000);
     }
 
     /**

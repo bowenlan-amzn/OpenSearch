@@ -67,6 +67,10 @@ public final class DatafusionReduceSink extends AbstractDatafusionReduceSink imp
     private final StreamHandle outStream;
     /** Cumulative batches fed into any native sender. */
     private final AtomicLong feedCount = new AtomicLong();
+    /** Cumulative nanos spent in sender.send (blocking on mpsc). */
+    private final AtomicLong sendNanosTotal = new AtomicLong();
+    /** Timestamp of first feed call. */
+    private volatile long feedStartNanos;
 
     /**
      * Future for the drain task, submitted at construction. Joined in
@@ -205,6 +209,15 @@ public final class DatafusionReduceSink extends AbstractDatafusionReduceSink imp
             batch.close();
             return;
         }
+        if (feedCount.get() == 0) {
+            long batchBytes = batch.getFieldVectors().stream().mapToLong(v -> v.getBufferSize()).sum();
+            logger.info("[ReduceSink] FIRST BATCH: rows={}, cols={}, bytes={}MB, schema={}",
+                batch.getRowCount(), batch.getSchema().getFields().size(),
+                batchBytes / (1024 * 1024),
+                batch.getSchema().getFields().stream()
+                    .map(f -> f.getName() + ":" + f.getType().toString())
+                    .reduce((a, b) -> a + ", " + b).orElse("empty"));
+        }
         BufferAllocator alloc = ctx.allocator();
         // Type-only equality check; nullability and Timestamp precision are advisory.
         if (!typesMatch(batch.getSchema(), declaredSchema)) {
@@ -229,8 +242,17 @@ public final class DatafusionReduceSink extends AbstractDatafusionReduceSink imp
             // close — see DatafusionPartitionSender. Throws IllegalStateException via
             // NativeHandle.getPointer() if the sender was closed (the close-race path).
             try {
+                if (feedStartNanos == 0) feedStartNanos = System.nanoTime();
+                long sendT0 = System.nanoTime();
                 sender.send(array.memoryAddress(), arrowSchema.memoryAddress());
-                feedCount.incrementAndGet();
+                sendNanosTotal.addAndGet(System.nanoTime() - sendT0);
+                long count = feedCount.incrementAndGet();
+                if (count % 500 == 0) {
+                    long elapsedMs = (System.nanoTime() - feedStartNanos) / 1_000_000;
+                    logger.info("[ReduceSink] fed {} batches in {}ms (sendBlocking={}ms avg={}ms/batch)",
+                        count, elapsedMs, sendNanosTotal.get() / 1_000_000,
+                        sendNanosTotal.get() / 1_000_000 / count);
+                }
             } catch (IllegalStateException e) {
                 // Sender close raced our send — Rust didn't take ownership, so the FFI
                 // structs' release callbacks are still set. Invoke them explicitly to free
@@ -325,6 +347,12 @@ public final class DatafusionReduceSink extends AbstractDatafusionReduceSink imp
 
     @Override
     protected Throwable closeUnderLock() {
+        if (feedStartNanos != 0) {
+            long totalMs = (System.nanoTime() - feedStartNanos) / 1_000_000;
+            logger.info("[ReduceSink] FEED SUMMARY: {} batches, {}ms total, sendBlocking={}ms ({}%)",
+                feedCount.get(), totalMs, sendNanosTotal.get() / 1_000_000,
+                feedCount.get() > 0 ? (sendNanosTotal.get() / 1_000_000 * 100 / totalMs) : 0);
+        }
         Throwable failure = null;
         // 1. Signal EOF on every sender (ChildSink may have closed some already; idempotent).
         for (DatafusionPartitionSender sender : sendersByChildStageId.values()) {
