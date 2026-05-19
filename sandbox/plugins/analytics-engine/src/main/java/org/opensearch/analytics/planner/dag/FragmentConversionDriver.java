@@ -124,18 +124,40 @@ public class FragmentConversionDriver {
         FragmentInstructionHandlerFactory factory = backend.getInstructionHandlerFactory();
         LinkedList<InstructionNode> instructions = new LinkedList<>();
         RelNode leaf = findLeaf(plan.resolvedFragment());
+        RelNode top = plan.resolvedFragment();
 
         if (leaf instanceof OpenSearchTableScan) {
             List<DelegatedExpression> delegated = delegationBytes.getResult();
             if (!delegated.isEmpty()) {
-                // Delegation exists — use ShardScanWithDelegationInstructionNode which carries
-                // treeShape + count for the driving backend to configure its custom scan operator
                 factory.createShardScanWithDelegationNode(treeShape, delegated.size()).ifPresent(instructions::add);
             } else {
                 factory.createShardScanNode().ifPresent(instructions::add);
             }
+            if (top instanceof OpenSearchAggregate agg && agg.getMode() == AggregateMode.PARTIAL) {
+                factory.createPartialAggregateNode().ifPresent(instructions::add);
+            }
+        } else if (leaf instanceof OpenSearchStageInputScan) {
+            // Coordinator reduce stage — check if FINAL aggregate is present
+            RelNode firstAboveExchange = findFirstAboveExchange(top);
+            if (firstAboveExchange instanceof OpenSearchAggregate agg && agg.getMode() == AggregateMode.FINAL) {
+                factory.createFinalAggregateNode().ifPresent(instructions::add);
+            }
         }
         return instructions;
+    }
+
+    private static RelNode findFirstAboveExchange(RelNode node) {
+        if (node instanceof OpenSearchExchangeReducer) {
+            return null;
+        }
+        for (RelNode input : node.getInputs()) {
+            if (input instanceof OpenSearchExchangeReducer) {
+                return node;
+            }
+            RelNode found = findFirstAboveExchange(input);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     /**
