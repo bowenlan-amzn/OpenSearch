@@ -95,8 +95,13 @@ pub fn should_override(pool_limit_bytes: usize, context: OverrideContext) -> boo
         return false;
     }
 
-    let allocated = native_bridge_common::allocator::allocated_bytes();
-    if allocated <= 0 {
+    // Use resident_bytes (physical RSS) instead of allocated_bytes (live objects).
+    // allocated_bytes undercounts true memory pressure because jemalloc retains
+    // freed pages in thread caches and arenas. Under concurrent workloads, the gap
+    // between allocated and resident can be 10-20GB, causing the override to fire
+    // when the system is actually near OOM.
+    let resident = native_bridge_common::allocator::resident_bytes();
+    if resident <= 0 {
         return false;
     }
 
@@ -106,7 +111,7 @@ pub fn should_override(pool_limit_bytes: usize, context: OverrideContext) -> boo
     };
 
     let threshold_bytes = (pool_limit_bytes as u64 * threshold_x1000 / 1000) as i64;
-    allocated < threshold_bytes
+    resident < threshold_bytes
 }
 
 // ---------------------------------------------------------------------------

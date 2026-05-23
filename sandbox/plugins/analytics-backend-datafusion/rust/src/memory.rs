@@ -113,11 +113,28 @@ impl MemoryPool for DynamicLimitPool {
         additional: usize,
     ) -> Result<(), DataFusionError> {
         let dynamic_limit = &self.dynamic_limit;
+        let limit = dynamic_limit.load(Ordering::Acquire);
+
+        // Hard guard: if jemalloc resident already exceeds the pool limit,
+        // reject immediately regardless of pool accounting. This prevents
+        // burst OOM when many queries pass the CAS concurrently on a fresh
+        // process (pool.used appears low but actual physical memory is high).
+        let resident = native_bridge_common::allocator::resident_bytes();
+        if resident > 0 && resident as usize > limit {
+            self.tripped_count.fetch_add(1, Ordering::Relaxed);
+            let used = self.used.load(Ordering::Relaxed);
+            return Err(crate::native_error::pool_limit_error(
+                additional,
+                reservation.consumer().name(),
+                reservation.size(),
+                limit.saturating_sub(used),
+                limit,
+            ));
+        }
 
         // Fast path: try the normal CAS against the pool limit.
         let cas_result = self.used
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
-                let limit = dynamic_limit.load(Ordering::Acquire);
                 let new_used = used.checked_add(additional)?;
                 (new_used <= limit).then_some(new_used)
             });
