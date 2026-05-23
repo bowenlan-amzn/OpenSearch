@@ -8,6 +8,8 @@
 
 package org.opensearch.analytics.exec.stage.coordinator;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.analytics.backend.ExchangeSource;
 import org.opensearch.analytics.exec.QueryContext;
 import org.opensearch.analytics.exec.stage.AbstractStageExecution;
@@ -15,6 +17,7 @@ import org.opensearch.analytics.exec.stage.SinkProvidingStageExecution;
 import org.opensearch.analytics.exec.stage.StageTask;
 import org.opensearch.analytics.exec.stage.StageTaskId;
 import org.opensearch.analytics.planner.dag.Stage;
+import org.opensearch.analytics.spi.CancellableExchangeSink;
 import org.opensearch.analytics.spi.ExchangeSink;
 import org.opensearch.analytics.spi.MultiInputExchangeSink;
 import org.opensearch.analytics.spi.ReducingExchangeSink;
@@ -35,6 +38,8 @@ import java.util.concurrent.Executor;
  * @opensearch.internal
  */
 public final class ReduceStageExecution extends AbstractStageExecution implements SinkProvidingStageExecution {
+
+    private static final Logger logger = LogManager.getLogger(ReduceStageExecution.class);
 
     private final ReducingExchangeSink backendSink;
     private final ExchangeSink downstream;
@@ -93,6 +98,16 @@ public final class ReduceStageExecution extends AbstractStageExecution implement
 
     @Override
     protected void onTerminalTransition(State terminal) {
+        if (terminal == State.CANCELLED || terminal == State.FAILED) {
+            if (backendSink instanceof CancellableExchangeSink cancellable) {
+                logger.warn("[ReduceStageExecution] stage {} terminal={}, firing cancellable.cancel()", getStageId(), terminal);
+                try {
+                    cancellable.cancel();
+                } catch (Exception e) {
+                    logger.warn("[ReduceStageExecution] cancel() threw for stage " + getStageId(), e);
+                }
+            }
+        }
         try {
             backendSink.close();
         } catch (Exception ignore) {}
