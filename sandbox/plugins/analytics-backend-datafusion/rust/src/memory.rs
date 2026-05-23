@@ -112,6 +112,39 @@ impl MemoryPool for DynamicLimitPool {
         reservation: &MemoryReservation,
         additional: usize,
     ) -> Result<(), DataFusionError> {
+        // Hard guard: reject immediately if physical RSS exceeds the critical threshold.
+        //
+        // hashbrown::reserve() allocates via jemalloc BEFORE this try_grow is called
+        // (malloc-first, ask-permission-later). Under concurrent load, multiple queries
+        // grow multi-GB hash tables in parallel before any pool check occurs. This guard
+        // catches that burst: even if pool accounting (CAS) would approve, we reject when
+        // physical memory is critically high, forcing the operator to spill.
+        //
+        // Aligned with the critical threshold (95%) rather than 100% to give spill a
+        // chance to recover before the cancel path fires. Without this, the CAS can pass
+        // at 96% RSS (pool accounting lags jemalloc) and the cancel check never fires
+        // (it's post-CAS-fail only).
+        //
+        // Uses a cached resident_bytes value (refreshed every 100ms) to avoid calling
+        // jemalloc epoch.advance() on every batch — amortized cost <1µs.
+        let limit = self.dynamic_limit.load(Ordering::Acquire);
+        let resident = crate::memory_guard::cached_resident_bytes();
+        if resident > 0 {
+            let critical_threshold = crate::memory_guard::get_thresholds().critical;
+            let critical_bytes = (limit as f64 * critical_threshold) as usize;
+            if resident as usize > critical_bytes {
+                self.tripped_count.fetch_add(1, Ordering::Relaxed);
+                let used = self.used.load(Ordering::Relaxed);
+                return Err(crate::native_error::pool_limit_error(
+                    additional,
+                    reservation.consumer().name(),
+                    reservation.size(),
+                    0,
+                    limit,
+                ));
+            }
+        }
+
         let dynamic_limit = &self.dynamic_limit;
 
         // Fast path: try the normal CAS against the pool limit.
@@ -147,7 +180,22 @@ impl MemoryPool for DynamicLimitPool {
             }
         }
 
-        // Both pool and jemalloc confirm pressure — reject (operator will spill)
+        // Both pool and jemalloc confirm pressure. Check if RSS is critical —
+        // if so, cancel the query rather than spilling (spill can't help at 95%+).
+        if crate::memory_guard::should_cancel_query(limit) {
+            native_bridge_common::log_info!(
+                "Memory CANCEL: RSS exceeds critical threshold for consumer [{}]. Cancelling query to protect node.",
+                reservation.consumer().name()
+            );
+            return Err(DataFusionError::ResourcesExhausted(format!(
+                "Query cancelled: native memory RSS exceeds critical threshold ({}% of pool limit {}B). \
+                 Reduce query concurrency or increase datafusion.memory_pool_limit_bytes.",
+                (crate::memory_guard::get_thresholds().critical * 100.0) as u32,
+                limit
+            )));
+        }
+
+        // RSS between operator (85%) and critical (95%) — reject (operator will spill)
         self.tripped_count.fetch_add(1, Ordering::Relaxed);
         let used = self.used.load(Ordering::Relaxed);
         Err(crate::native_error::pool_limit_error(
@@ -393,5 +441,62 @@ mod tests {
         }
         assert_eq!(handle.tripped_count(), 0);
         assert_eq!(pool.reserved(), 100_000);
+    }
+
+    #[test]
+    fn test_hard_guard_rejects_when_rss_exceeds_critical() {
+        // Create a pool with a limit smaller than the current process RSS.
+        // A Rust test process typically uses 50-200MB RSS, so 20MB should
+        // always trigger the hard guard (RSS > 95% of 20MB = 19MB).
+        let (pool, handle) = new_pool(20 * 1024 * 1024); // 20MB
+
+        let resident = crate::memory_guard::cached_resident_bytes();
+        if resident <= 0 {
+            return; // jemalloc not available in this test env
+        }
+
+        let critical_bytes = (20.0 * 1024.0 * 1024.0 * 0.95) as i64;
+        if resident < critical_bytes {
+            return; // RSS unexpectedly low — skip rather than false-fail
+        }
+
+        let consumer = MemoryConsumer::new("hard_guard_test");
+        let mut reservation = consumer.register(&pool);
+
+        // The hard guard fires before the CAS — even a tiny grow should be rejected
+        let result = reservation.try_grow(1024);
+        assert!(
+            result.is_err(),
+            "try_grow should fail when RSS ({}) exceeds critical threshold (95% of 20MB)",
+            resident
+        );
+        assert!(
+            handle.tripped_count() >= 1,
+            "tripped_count should increment on hard guard rejection"
+        );
+    }
+
+    #[test]
+    fn test_hard_guard_passes_when_rss_below_critical() {
+        // Create a pool with a huge limit (1TB). The test process RSS is well
+        // below 95% of 1TB, so the hard guard should NOT fire.
+        let limit = 1024 * 1024 * 1024 * 1024_usize; // 1TB
+        let (pool, handle) = new_pool(limit);
+
+        let consumer = MemoryConsumer::new("large_pool_test");
+        let mut reservation = consumer.register(&pool);
+
+        // A small allocation should succeed — RSS is far below 95% of 1TB
+        let result = reservation.try_grow(4096);
+        assert!(
+            result.is_ok(),
+            "try_grow should succeed when RSS is well below 95% of 1TB pool limit"
+        );
+        assert_eq!(
+            handle.tripped_count(),
+            0,
+            "tripped_count should remain 0 when hard guard does not fire"
+        );
+        assert_eq!(pool.reserved(), 4096);
     }
 }

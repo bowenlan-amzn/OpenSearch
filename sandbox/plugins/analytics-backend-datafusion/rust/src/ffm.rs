@@ -155,13 +155,14 @@ pub extern "C" fn df_set_min_target_partitions(value: i64) {
     api::set_min_target_partitions(value);
 }
 
-/// Sets memory guard thresholds. admission_x1000 and operator_x1000 are
-/// the thresholds multiplied by 1000 (e.g., 700 = 0.70, 850 = 0.85).
+/// Sets memory guard thresholds. Values are thresholds multiplied by 1000
+/// (e.g., 700 = 0.70, 850 = 0.85, 950 = 0.95).
 #[no_mangle]
-pub extern "C" fn df_set_memory_guard_thresholds(admission_x1000: i64, operator_x1000: i64) {
+pub extern "C" fn df_set_memory_guard_thresholds(admission_x1000: i64, operator_x1000: i64, critical_x1000: i64) {
     crate::memory_guard::set_thresholds(crate::memory_guard::MemoryThresholds {
         admission: admission_x1000 as f64 / 1000.0,
         operator: operator_x1000 as f64 / 1000.0,
+        critical: critical_x1000 as f64 / 1000.0,
     });
 }
 

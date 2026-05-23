@@ -229,6 +229,21 @@ public class DataFusionPlugin extends Plugin
     );
 
     /**
+     * RSS fraction at which memory is considered critical. Serves dual purpose:
+     * - Hard guard (pre-CAS): forces spill when pool accounting lags jemalloc (recoverable)
+     * - Cancel path (post-CAS-fail): terminates query when spill can't help (last resort)
+     * Default: 0.95.
+     */
+    public static final Setting<Double> DATAFUSION_MEMORY_GUARD_CRITICAL_THRESHOLD = Setting.doubleSetting(
+        "datafusion.memory_guard.critical_threshold",
+        0.95,
+        0.0,
+        1.0,
+        Setting.Property.NodeScope,
+        Setting.Property.Dynamic
+    );
+
+    /**
      * Selects how the coordinator-reduce sink hands shard responses to the native runtime.
      * <ul>
      *   <li>{@code streaming} (default) — use {@link DatafusionReduceSink}: each batch is pushed
@@ -308,12 +323,15 @@ public class DataFusionPlugin extends Plugin
             .addSettingsUpdateConsumer(DATAFUSION_MEMORY_GUARD_ADMISSION_THRESHOLD, v -> updateMemoryGuardThresholds());
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(DATAFUSION_MEMORY_GUARD_OPERATOR_THRESHOLD, v -> updateMemoryGuardThresholds());
+        clusterService.getClusterSettings()
+            .addSettingsUpdateConsumer(DATAFUSION_MEMORY_GUARD_CRITICAL_THRESHOLD, v -> updateMemoryGuardThresholds());
 
         // Apply initial values
         NativeBridge.setMinTargetPartitions(DATAFUSION_MIN_TARGET_PARTITIONS.get(settings));
         NativeBridge.setMemoryGuardThresholds(
             DATAFUSION_MEMORY_GUARD_ADMISSION_THRESHOLD.get(settings),
-            DATAFUSION_MEMORY_GUARD_OPERATOR_THRESHOLD.get(settings)
+            DATAFUSION_MEMORY_GUARD_OPERATOR_THRESHOLD.get(settings),
+            DATAFUSION_MEMORY_GUARD_CRITICAL_THRESHOLD.get(settings)
         );
 
         this.datafusionSettings = new DatafusionSettings(clusterService);
@@ -451,8 +469,9 @@ public class DataFusionPlugin extends Plugin
     private void updateMemoryGuardThresholds() {
         double admission = clusterService.getClusterSettings().get(DATAFUSION_MEMORY_GUARD_ADMISSION_THRESHOLD);
         double operator = clusterService.getClusterSettings().get(DATAFUSION_MEMORY_GUARD_OPERATOR_THRESHOLD);
-        NativeBridge.setMemoryGuardThresholds(admission, operator);
-        logger.info("Updated DataFusion memory guard thresholds: admission={}, operator={}", admission, operator);
+        double critical = clusterService.getClusterSettings().get(DATAFUSION_MEMORY_GUARD_CRITICAL_THRESHOLD);
+        NativeBridge.setMemoryGuardThresholds(admission, operator, critical);
+        logger.info("Updated DataFusion memory guard thresholds: admission={}, operator={}, critical={}", admission, operator, critical);
     }
 
     @Override
